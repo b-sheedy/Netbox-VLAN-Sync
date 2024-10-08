@@ -1,0 +1,47 @@
+import requests
+import re
+#import json
+from pprint import pprint
+
+def get_netbox(path,params):
+    token = '3d84ffc0a07a42c7ee3284ad8fce487f78f1e042'
+    url = 'https://netbox.calgaryflames.com' + path
+    headers = {'Accept': 'application/json',
+               'Content-Type': 'application/json',
+               'Authorization': f'Token {token}'}
+    response = requests.get(url, params=params, headers=headers, verify=False)
+    return response.json()['results']
+
+def get_netbox_devices():
+    path = '/api/dcim/devices/'
+    params = {'manufacturer': 'extreme-networks', 'role': 'switch'}
+    api_data = get_netbox(path, params)
+    collector = []
+    for switch in api_data:
+        if switch['virtual_chassis'] == None or switch['vc_position'] == 1:
+            collector.append({'id': switch['id'],
+                            'name': switch['name'],
+                            'ip': switch['primary_ip']['address']})
+    return collector
+
+def get_netbox_interfaces(switch):
+    path = '/api/dcim/interfaces/'
+    params = {'device_id': switch['id']}
+    api_data = get_netbox(path, params)
+    collector = []
+    for interface in api_data:
+        if re.search(r'\d:\d+', interface['name']):
+            collector.append({'id': interface['id'],
+                            'name': interface['name'],
+                            'tagged_vlans': interface['tagged_vlans'],
+                            'untagged_vlan': interface['untagged_vlan']})
+    return collector
+
+
+switches = get_netbox_devices()
+for switch in switches:
+    netbox_interfaces = get_netbox_interfaces(switch)
+
+
+    pprint(netbox_interfaces)
+    break
