@@ -21,26 +21,28 @@ def get_netbox_devices():
     collector = {}
     for switch in api_data:
         if switch['virtual_chassis'] == None or switch['vc_position'] == 1:
-            collector[switch['name']] = {'id': switch['id'],
+            collector[switch['name']] = {'device_id': switch['id'],
                                          'ip': switch['primary_ip']['address']}
     return collector
 
-def get_netbox_interfaces(id):
+def get_netbox_interfaces(device_id):
     path = '/api/dcim/interfaces/'
-    params = {'device_id': id}
+    params = {'device_id': device_id}
     api_data = get_netbox(path, params)
     collector = {}
     for interface in api_data:
         if re.search(r'\d:\d+', interface['name']):
-            collector[interface['name']] = {'id': interface['id'],
+            collector[interface['name']] = {'int_id': interface['id'],
                                             'tagged_vlans': interface['tagged_vlans'],
                                             'untagged_vlan': interface['untagged_vlan']}
     return collector
 
 
 switches = get_netbox_devices()
+pprint(switches)
+
 for name, info in switches.items():
-    netbox_interfaces = get_netbox_interfaces(info['id'])
+    netbox_interfaces = get_netbox_interfaces(info['device_id'])
 
     pprint(netbox_interfaces)
     break
