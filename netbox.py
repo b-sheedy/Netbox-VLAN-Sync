@@ -18,17 +18,16 @@ def get_netbox_devices():
     path = '/api/dcim/devices/'
     params = {'manufacturer': 'extreme-networks', 'role': 'switch'}
     api_data = get_netbox(path, params)
-    collector = []
+    collector = {}
     for switch in api_data:
         if switch['virtual_chassis'] == None or switch['vc_position'] == 1:
-            collector.append({'id': switch['id'],
-                            'name': switch['name'],
-                            'ip': switch['primary_ip']['address']})
+            collector[switch['name']] = {'id': switch['id'],
+                                         'ip': switch['primary_ip']['address']}
     return collector
 
-def get_netbox_interfaces(switch):
+def get_netbox_interfaces(id):
     path = '/api/dcim/interfaces/'
-    params = {'device_id': switch['id']}
+    params = {'device_id': id}
     api_data = get_netbox(path, params)
     collector = {}
     for interface in api_data:
@@ -40,9 +39,8 @@ def get_netbox_interfaces(switch):
 
 
 switches = get_netbox_devices()
-for switch in switches:
-    netbox_interfaces = get_netbox_interfaces(switch)
-
+for name, info in switches.items():
+    netbox_interfaces = get_netbox_interfaces(info['id'])
 
     pprint(netbox_interfaces)
     break
