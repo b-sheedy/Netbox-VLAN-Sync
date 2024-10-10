@@ -2,6 +2,8 @@ import requests
 import re
 #import json
 from pprint import pprint
+import urllib3
+urllib3.disable_warnings()
 
 def get_netbox(path,params):
     token = '3d84ffc0a07a42c7ee3284ad8fce487f78f1e042'
@@ -28,13 +30,12 @@ def get_netbox_interfaces(switch):
     path = '/api/dcim/interfaces/'
     params = {'device_id': switch['id']}
     api_data = get_netbox(path, params)
-    collector = []
+    collector = {}
     for interface in api_data:
         if re.search(r'\d:\d+', interface['name']):
-            collector.append({'id': interface['id'],
-                            'name': interface['name'],
-                            'tagged_vlans': interface['tagged_vlans'],
-                            'untagged_vlan': interface['untagged_vlan']})
+            collector[interface['name']] = {'id': interface['id'],
+                                            'tagged_vlans': interface['tagged_vlans'],
+                                            'untagged_vlan': interface['untagged_vlan']}
     return collector
 
 
