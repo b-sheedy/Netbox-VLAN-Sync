@@ -22,7 +22,7 @@ def get_netbox_devices():
     for switch in api_data:
         if switch['virtual_chassis'] == None or switch['vc_position'] == 1:
             collector[switch['name']] = {'device_id': switch['id'],
-                                         'ip': switch['primary_ip']['address']}
+                                         'ip': switch['primary_ip']['address'][:-3]}
     return collector
 
 def get_netbox_interfaces(device_id):
