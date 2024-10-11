@@ -1,16 +1,18 @@
 import requests
 import re
-#import json
+import json
 from pprint import pprint
 import urllib3
 urllib3.disable_warnings()
 
+token = '3d84ffc0a07a42c7ee3284ad8fce487f78f1e042'
+base_url = 'https://netbox.calgaryflames.com'
+headers = {'Accept': 'application/json',
+           'Content-Type': 'application/json',
+           'Authorization': f'Token {token}'}
+
 def get_netbox(path,params):
-    token = '3d84ffc0a07a42c7ee3284ad8fce487f78f1e042'
-    url = 'https://netbox.calgaryflames.com' + path
-    headers = {'Accept': 'application/json',
-               'Content-Type': 'application/json',
-               'Authorization': f'Token {token}'}
+    url = base_url + path
     response = requests.get(url, params=params, headers=headers, verify=False)
     return response.json()['results']
 
@@ -32,9 +34,11 @@ def get_netbox_interfaces(device_id):
     collector = {}
     for interface in api_data:
         if re.search(r'\d:\d+', interface['name']):
+            untagged =  interface['untagged_vlan']['vid'] if interface['untagged_vlan'] else None
+            tagged = [vlan['vid'] for vlan in interface['tagged_vlans']]
             collector[interface['name']] = {'int_id': interface['id'],
-                                            'tagged_vlans': interface['tagged_vlans'],
-                                            'untagged_vlan': interface['untagged_vlan']}
+                                            'tagged_vlans': sorted(tagged),
+                                            'untagged_vlan': untagged}
     return collector
 
 
