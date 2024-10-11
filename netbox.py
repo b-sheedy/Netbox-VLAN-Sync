@@ -34,9 +34,11 @@ def get_netbox_interfaces(device_id):
     collector = {}
     for interface in api_data:
         if re.search(r'\d:\d+', interface['name']):
+            mode = interface['mode']['value'] if interface['mode'] else None
             untagged =  interface['untagged_vlan']['vid'] if interface['untagged_vlan'] else None
             tagged = [vlan['vid'] for vlan in interface['tagged_vlans']]
             collector[interface['name']] = {'int_id': interface['id'],
+                                            'mode': mode,
                                             'tagged_vlans': sorted(tagged),
                                             'untagged_vlan': untagged}
     return collector
