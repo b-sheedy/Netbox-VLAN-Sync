@@ -68,10 +68,11 @@ def get_exos_interfaces(ip, headers):
     response = requests.get(url + filter, headers=headers, verify=False).json()
     collector = {}
     for int in response:
-        collector[int['name']] = {'mode': int['openconfig-if-ethernet:ethernet']['openconfig-vlan:switched-vlan']['state']['interface-mode'].lower(),
-                                    'tagged_vlans': sorted(int['openconfig-if-ethernet:ethernet']['openconfig-vlan:switched-vlan']['state'].get('trunk-vlans', [])),
-                                    'untagged_vlan': int['openconfig-if-ethernet:ethernet']['openconfig-vlan:switched-vlan']['state'].get('native-vlan', None)}
-        collector[int['name']]['mode'].replace('trunk', 'tagged')
+        if int['state']['oper-status'] != 'NOT_PRESENT':
+            collector[int['name']] = {'mode': int['openconfig-if-ethernet:ethernet']['openconfig-vlan:switched-vlan']['state']['interface-mode'].lower(),
+                                        'tagged_vlans': sorted(int['openconfig-if-ethernet:ethernet']['openconfig-vlan:switched-vlan']['state'].get('trunk-vlans', [])),
+                                        'untagged_vlan': int['openconfig-if-ethernet:ethernet']['openconfig-vlan:switched-vlan']['state'].get('native-vlan', None)}
+            collector[int['name']]['mode'].replace('trunk', 'tagged')
     return collector
 
 switches = get_netbox_devices()
