@@ -62,12 +62,26 @@ def exos_auth(ip):
     headers['Cookie'] = f'x-auth-token={token}'
     return headers
 
+def get_exos_interfaces(ip, headers):
+    filter = '?filter=$.openconfig-interfaces:interfaces.interface[?(@.state.type == "ethernetCsmacd")]'
+    url = f'https://{ip}/rest/restconf/data/openconfig-interfaces:interfaces'
+    response = requests.get(url + filter, headers=headers, verify=False).json()
+    collector = {}
+    for int in response:
+        collector[int['name']] = {'mode': int['openconfig-if-ethernet:ethernet']['openconfig-vlan:switched-vlan']['state']['interface-mode'].lower(),
+                                    'tagged_vlans': sorted(int['openconfig-if-ethernet:ethernet']['openconfig-vlan:switched-vlan']['state'].get('trunk-vlans', [])),
+                                    'untagged_vlan': int['openconfig-if-ethernet:ethernet']['openconfig-vlan:switched-vlan']['state'].get('native-vlan', None)}
+        collector[int['name']]['mode'].replace('trunk', 'tagged')
+    return collector
+
 switches = get_netbox_devices()
 #pprint(switches)
 
 for name, info in switches.items():
     exos_headers = exos_auth(info['ip'])
+    exos_interfaces = get_exos_interfaces(info['ip'], exos_headers)
     netbox_interfaces = get_netbox_interfaces(info)
-    pprint(exos_headers)
+
     pprint(netbox_interfaces)
+    pprint(exos_interfaces)
     break
