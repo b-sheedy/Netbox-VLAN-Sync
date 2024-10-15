@@ -1,15 +1,18 @@
 import requests
 import re
 import json
-from pprint import pprint
 import urllib3
+import os
+from pprint import pprint
+from dotenv import load_dotenv
+
+load_dotenv()
 urllib3.disable_warnings()
 
-token = '3d84ffc0a07a42c7ee3284ad8fce487f78f1e042'
 base_url = 'https://netbox.calgaryflames.com'
 headers = {'Accept': 'application/json',
            'Content-Type': 'application/json',
-           'Authorization': f'Token {token}'}
+           'Authorization': f'Token {os.environ.get('netbox_token')}'}
 
 def get_netbox(path,params):
     url = base_url + path
