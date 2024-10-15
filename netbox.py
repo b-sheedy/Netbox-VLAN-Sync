@@ -10,13 +10,13 @@ load_dotenv()
 urllib3.disable_warnings()
 
 base_url = 'https://netbox.calgaryflames.com'
-headers = {'Accept': 'application/json',
+netbox_headers = {'Accept': 'application/json',
            'Content-Type': 'application/json',
            'Authorization': f'Token {os.environ.get('netbox_token')}'}
 
 def get_netbox(path,params):
     url = base_url + path
-    response = requests.get(url, params=params, headers=headers, verify=False)
+    response = requests.get(url, params=params, headers=netbox_headers, verify=False)
     return response.json()['results']
 
 def get_netbox_devices():
@@ -53,12 +53,21 @@ def get_netbox_interfaces(info):
                                             'untagged_vlan': untagged}
     return collector
 
+def exos_auth(ip):
+    headers = {'Content-Type': 'application/json',}
+    json = {'username': os.environ.get('exos_uname'),
+            'password': os.environ.get('exos_pwd')}
+    url = f'https://{ip}/auth/token'
+    token = requests.post(url, json=json, headers=headers, verify=False).json()['token']
+    headers['Cookie'] = f'x-auth-token={token}'
+    return headers
 
 switches = get_netbox_devices()
-pprint(switches)
+#pprint(switches)
 
 for name, info in switches.items():
+    exos_headers = exos_auth(info['ip'])
     netbox_interfaces = get_netbox_interfaces(info)
-
+    pprint(exos_headers)
     pprint(netbox_interfaces)
     break
