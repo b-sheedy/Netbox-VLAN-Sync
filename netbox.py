@@ -34,6 +34,15 @@ def get_netbox_devices():
                                          'ip': switch['primary_ip']['address'][:-3]}
     return collector
 
+def get_netbox_vlans():
+    path = '/api/ipam/vlans/'
+    params = {'brief': 1, 'site': 'saddledome'}
+    api_data = get_netbox(path, params)
+    collector = {}
+    for vlan in api_data:
+        collector[vlan['vid']] = vlan['id']
+    return collector
+
 def get_netbox_interfaces(info):
     path = '/api/dcim/interfaces/'
     if info.get('vc_id'):
@@ -76,7 +85,9 @@ def get_exos_interfaces(ip, headers):
     return collector
 
 switches = get_netbox_devices()
+netbox_vlan_ids = get_netbox_vlans()
 #pprint(switches)
+#pprint(netbox_vlan_ids)
 
 for name, info in switches.items():
     exos_headers = exos_auth(info['ip'])
