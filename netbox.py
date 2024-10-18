@@ -40,7 +40,7 @@ def get_netbox_devices():
 
 def get_netbox_vlans():
     path = '/api/ipam/vlans/'
-    params = {'brief': 1, 'site': 'saddledome'}
+    params = {'brief': 1, 'site': ['saddledome', 'multiple']}
     api_data = get_netbox(path, params)
     collector = {}
     for vlan in api_data:
@@ -110,6 +110,19 @@ def get_int_updates(netbox_interfaces, exos_interfaces):
             collector.append(update)
     return collector
 
+def set_netbox_interface(int):
+    body = dict(int)
+    del body['int_id'], body['port']
+    if 'untagged_vlan' in body:
+        body['untagged_vlan'] = netbox_vlan_ids[body['untagged_vlan']]
+    if 'tagged_vlans' in body:
+        body['tagged_vlans'] = [netbox_vlan_ids[i] for i in body['tagged_vlans']]
+    path = f'/api/dcim/interfaces/{int['int_id']}/'
+    url = base_url + path
+    response = requests.patch(url, json=body, headers=netbox_headers, verify=False)
+    pprint(response.json())
+    print(response.status_code)
+
 
 switches = get_netbox_devices()
 netbox_vlan_ids = get_netbox_vlans()
@@ -122,7 +135,11 @@ for name, info in switches.items():
     netbox_interfaces = get_netbox_interfaces(info)
     interface_updates = get_int_updates(netbox_interfaces, exos_interfaces)
 
-    pprint(interface_updates)
-    pprint(netbox_interfaces)
-    pprint(exos_interfaces)
+    for int in interface_updates:
+        set_netbox_interface(int)
+        break
+
+    # pprint(interface_updates)
+    # pprint(netbox_interfaces)
+    # pprint(exos_interfaces)
     break
