@@ -17,7 +17,11 @@ netbox_headers = {'Accept': 'application/json',
 def get_netbox(path,params):
     url = base_url + path
     response = requests.get(url, params=params, headers=netbox_headers, verify=False)
-    return response.json()['results']
+    api_data = response.json()['results']
+    while response.json()['next'] != None:
+        response = requests.get(response.json()['next'], params=params, headers=netbox_headers, verify=False)
+        api_data.extend(response.json()['results'])
+    return api_data
 
 def get_netbox_devices():
     path = '/api/dcim/devices/'
@@ -81,7 +85,8 @@ def get_exos_interfaces(ip, headers):
             collector[int['name']] = {'mode': int['openconfig-if-ethernet:ethernet']['openconfig-vlan:switched-vlan']['state']['interface-mode'].lower(),
                                         'tagged_vlans': sorted(int['openconfig-if-ethernet:ethernet']['openconfig-vlan:switched-vlan']['state'].get('trunk-vlans', [])),
                                         'untagged_vlan': int['openconfig-if-ethernet:ethernet']['openconfig-vlan:switched-vlan']['state'].get('native-vlan', None)}
-            collector[int['name']]['mode'].replace('trunk', 'tagged')
+            if collector[int['name']]['mode'] == 'trunk':
+                collector[int['name']]['mode'] = 'tagged'
     return collector
 
 switches = get_netbox_devices()
