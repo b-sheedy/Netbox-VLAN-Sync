@@ -83,10 +83,12 @@ def get_exos_interfaces(ip, headers):
     for int in response:
         if int['state']['oper-status'] != 'NOT_PRESENT':
             collector[int['name']] = {'mode': int['openconfig-if-ethernet:ethernet']['openconfig-vlan:switched-vlan']['state']['interface-mode'].lower(),
-                                        'tagged_vlans': sorted(int['openconfig-if-ethernet:ethernet']['openconfig-vlan:switched-vlan']['state'].get('trunk-vlans', [])),
-                                        'untagged_vlan': int['openconfig-if-ethernet:ethernet']['openconfig-vlan:switched-vlan']['state'].get('native-vlan', None)}
+                                      'tagged_vlans': sorted(int['openconfig-if-ethernet:ethernet']['openconfig-vlan:switched-vlan']['state'].get('trunk-vlans', []))}
             if collector[int['name']]['mode'] == 'trunk':
                 collector[int['name']]['mode'] = 'tagged'
+                collector[int['name']]['untagged_vlan'] = int['openconfig-if-ethernet:ethernet']['openconfig-vlan:switched-vlan']['state'].get('native-vlan', None)
+            if collector[int['name']]['mode'] == 'access':
+                collector[int['name']]['untagged_vlan'] = int['openconfig-if-ethernet:ethernet']['openconfig-vlan:switched-vlan']['state'].get('access-vlan', None)
     return collector
 
 def get_int_updates(netbox_interfaces, exos_interfaces):
