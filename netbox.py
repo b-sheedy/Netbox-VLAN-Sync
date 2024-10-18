@@ -89,6 +89,26 @@ def get_exos_interfaces(ip, headers):
                 collector[int['name']]['mode'] = 'tagged'
     return collector
 
+def get_int_updates(netbox_interfaces, exos_interfaces):
+    collector = []
+    for interface, info in exos_interfaces.items():
+        update = {}
+        flag_tagged = False
+        flag_untagged = False
+        if info['tagged_vlans'] != netbox_interfaces[interface]['tagged_vlans']:
+            flag_tagged = True
+        if info['untagged_vlan'] != netbox_interfaces[interface]['untagged_vlan']:
+            flag_untagged = True
+        if flag_tagged == True or flag_untagged == True:
+            update = {'port': interface, 'int_id': netbox_interfaces[interface]['int_id'], 'mode': info['mode']}
+            if flag_tagged == True:
+                update['tagged_vlans'] = info['tagged_vlans']
+            if flag_untagged == True:
+                update['untagged_vlan'] = info['untagged_vlan']
+            collector.append(update)
+    return collector
+
+
 switches = get_netbox_devices()
 netbox_vlan_ids = get_netbox_vlans()
 #pprint(switches)
@@ -98,7 +118,9 @@ for name, info in switches.items():
     exos_headers = exos_auth(info['ip'])
     exos_interfaces = get_exos_interfaces(info['ip'], exos_headers)
     netbox_interfaces = get_netbox_interfaces(info)
+    interface_updates = get_int_updates(netbox_interfaces, exos_interfaces)
 
+    pprint(interface_updates)
     pprint(netbox_interfaces)
     pprint(exos_interfaces)
     break
