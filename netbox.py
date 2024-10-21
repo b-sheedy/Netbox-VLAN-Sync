@@ -29,16 +29,16 @@ def get_netbox_devices():
     for switch in api_data:
         if switch['virtual_chassis'] == None:
             collector[switch['name']] = {'device_id': switch['id'],
-                                         'ip': switch['primary_ip']['address'][:-3]}
+                                         'ip': switch['primary_ip']['address'].split('/')[0]}
         elif switch['vc_position'] == 1:
             collector[switch['name']] = {'device_id': switch['id'],
                                          'vc_id': switch['virtual_chassis']['id'],
-                                         'ip': switch['primary_ip']['address'][:-3]}
+                                         'ip': switch['primary_ip']['address'].split('/')[0]}
     return collector
 
 def get_netbox_vlans():
     path = '/api/ipam/vlans/'
-    params = {'brief': 1, 'site': ['saddledome', 'multiple']}
+    params = {'brief': 1, 'site': ['saddledome', 'null']}
     api_data = get_netbox(path, params)
     collector = {}
     for vlan in api_data:
@@ -122,7 +122,7 @@ def get_int_updates(netbox_interfaces, exos_interfaces):
 def set_netbox_interface(int):
     int_id = int.pop('int_id')
     port = int.pop('port')
-    print(f'Setting interface {port} untagged VLAN to {int['untagged_vlan']} and tagged VLAN(s) to {int['tagged_vlans']}')
+    print(f'Setting interface {port} untagged VLAN to {int.get('untagged_vlan', 'None')} and tagged VLAN(s) to {int.get('tagged_vlans', 'None')}')
     if 'untagged_vlan' in int:
         int['untagged_vlan'] = netbox_vlan_ids[int['untagged_vlan']]
     if 'tagged_vlans' in int:
@@ -140,6 +140,7 @@ switches = get_netbox_devices()
 netbox_vlan_ids = get_netbox_vlans()
 for name, info in switches.items():
     try:
+        print('Connecting to switch', name)
         exos_headers = exos_auth(info['ip'])
         exos_interfaces = get_exos_interfaces(info['ip'], exos_headers)
         netbox_interfaces = get_netbox_interfaces(info)
@@ -149,4 +150,4 @@ for name, info in switches.items():
             break
         break
     except:
-        continue
+        break
