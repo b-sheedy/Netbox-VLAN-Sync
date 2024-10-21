@@ -47,14 +47,15 @@ def get_netbox_vlans():
 
 def get_netbox_interfaces(info):
     path = '/api/dcim/interfaces/'
+    params = {'enabled': True}
     if info.get('vc_id'):
-        params = {'virtual_chassis_id': info['vc_id']}
+        params['virtual_chassis_id'] = info['vc_id']
     else:
-        params = {'device_id': info['device_id']}
+        params['device_id'] = info['device_id']
     api_data = get_netbox(path, params)
     collector = {}
     for interface in api_data:
-        if re.search(r'\d:\d+', interface['name']):
+        if re.search(r'\d:\d+:?\d?', interface['name']):
             mode = interface['mode']['value'] if interface['mode'] else None
             untagged =  interface['untagged_vlan']['vid'] if interface['untagged_vlan'] else None
             tagged = [vlan['vid'] for vlan in interface['tagged_vlans']]
@@ -103,20 +104,23 @@ def get_exos_interfaces(ip, headers):
 def get_int_updates(netbox_interfaces, exos_interfaces):
     collector = []
     for interface, info in exos_interfaces.items():
-        update = {}
-        flag_tagged = False
-        flag_untagged = False
-        if info['tagged_vlans'] != netbox_interfaces[interface]['tagged_vlans']:
-            flag_tagged = True
-        if info['untagged_vlan'] != netbox_interfaces[interface]['untagged_vlan']:
-            flag_untagged = True
-        if flag_tagged == True or flag_untagged == True:
-            update = {'port': interface, 'int_id': netbox_interfaces[interface]['int_id'], 'mode': info['mode']}
-            if flag_tagged == True:
-                update['tagged_vlans'] = info['tagged_vlans']
-            if flag_untagged == True:
-                update['untagged_vlan'] = info['untagged_vlan']
-            collector.append(update)
+        try:
+            update = {}
+            flag_tagged = False
+            flag_untagged = False
+            if info['tagged_vlans'] != netbox_interfaces[interface]['tagged_vlans']:
+                flag_tagged = True
+            if info['untagged_vlan'] != netbox_interfaces[interface]['untagged_vlan']:
+                flag_untagged = True
+            if flag_tagged == True or flag_untagged == True:
+                update = {'port': interface, 'int_id': netbox_interfaces[interface]['int_id'], 'mode': info['mode']}
+                if flag_tagged == True:
+                    update['tagged_vlans'] = info['tagged_vlans']
+                if flag_untagged == True:
+                    update['untagged_vlan'] = info['untagged_vlan']
+                collector.append(update)
+        except KeyError:
+            print(f'Interface {interface} not found in Netbox')
     return collector
 
 def set_netbox_interface(int):
