@@ -1,9 +1,7 @@
 import requests
 import re
-import json
 import urllib3
 import os
-from pprint import pprint
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -71,25 +69,36 @@ def exos_auth(ip):
     json = {'username': os.environ.get('exos_uname'),
             'password': os.environ.get('exos_pwd')}
     url = f'https://{ip}/auth/token'
-    token = requests.post(url, json=json, headers=headers, verify=False).json()['token']
-    headers['Cookie'] = f'x-auth-token={token}'
-    return headers
+    try:
+        response = requests.post(url, json=json, headers=headers, verify=False)
+        response.raise_for_status()
+        token = response.json()['token']
+        headers['Cookie'] = f'x-auth-token={token}'
+        return headers
+    except requests.exceptions.RequestException as excpt:
+        print(f'Unable to retrieve RESTCONF token, {excpt}')
+        raise
 
 def get_exos_interfaces(ip, headers):
     filter = '?filter=$.openconfig-interfaces:interfaces.interface[?(@.state.type == "ethernetCsmacd")]'
     url = f'https://{ip}/rest/restconf/data/openconfig-interfaces:interfaces'
-    response = requests.get(url + filter, headers=headers, verify=False).json()
-    collector = {}
-    for int in response:
-        if int['state']['oper-status'] != 'NOT_PRESENT':
-            collector[int['name']] = {'mode': int['openconfig-if-ethernet:ethernet']['openconfig-vlan:switched-vlan']['state']['interface-mode'].lower(),
-                                      'tagged_vlans': sorted(int['openconfig-if-ethernet:ethernet']['openconfig-vlan:switched-vlan']['state'].get('trunk-vlans', []))}
-            if collector[int['name']]['mode'] == 'trunk':
-                collector[int['name']]['mode'] = 'tagged'
-                collector[int['name']]['untagged_vlan'] = int['openconfig-if-ethernet:ethernet']['openconfig-vlan:switched-vlan']['state'].get('native-vlan', None)
-            if collector[int['name']]['mode'] == 'access':
-                collector[int['name']]['untagged_vlan'] = int['openconfig-if-ethernet:ethernet']['openconfig-vlan:switched-vlan']['state'].get('access-vlan', None)
-    return collector
+    try:
+        response = requests.get(url + filter, headers=headers, verify=False)
+        response.raise_for_status()
+        collector = {}
+        for int in response.json():
+            if int['state']['oper-status'] != 'NOT_PRESENT':
+                collector[int['name']] = {'mode': int['openconfig-if-ethernet:ethernet']['openconfig-vlan:switched-vlan']['state']['interface-mode'].lower(),
+                                        'tagged_vlans': sorted(int['openconfig-if-ethernet:ethernet']['openconfig-vlan:switched-vlan']['state'].get('trunk-vlans', []))}
+                if collector[int['name']]['mode'] == 'trunk':
+                    collector[int['name']]['mode'] = 'tagged'
+                    collector[int['name']]['untagged_vlan'] = int['openconfig-if-ethernet:ethernet']['openconfig-vlan:switched-vlan']['state'].get('native-vlan', None)
+                if collector[int['name']]['mode'] == 'access':
+                    collector[int['name']]['untagged_vlan'] = int['openconfig-if-ethernet:ethernet']['openconfig-vlan:switched-vlan']['state'].get('access-vlan', None)
+        return collector
+    except requests.exceptions.RequestException as excpt:
+        print(f'Unable to retrieve RESTCONF data, {excpt}')
+        raise
 
 def get_int_updates(netbox_interfaces, exos_interfaces):
     collector = []
@@ -111,35 +120,33 @@ def get_int_updates(netbox_interfaces, exos_interfaces):
     return collector
 
 def set_netbox_interface(int):
-    body = dict(int)
-    del body['int_id'], body['port']
-    if 'untagged_vlan' in body:
-        body['untagged_vlan'] = netbox_vlan_ids[body['untagged_vlan']]
-    if 'tagged_vlans' in body:
-        body['tagged_vlans'] = [netbox_vlan_ids[i] for i in body['tagged_vlans']]
-    path = f'/api/dcim/interfaces/{int['int_id']}/'
+    int_id = int.pop('int_id')
+    port = int.pop('port')
+    print(f'Setting interface {port} untagged VLAN to {int['untagged_vlan']} and tagged VLAN(s) to {int['tagged_vlans']}')
+    if 'untagged_vlan' in int:
+        int['untagged_vlan'] = netbox_vlan_ids[int['untagged_vlan']]
+    if 'tagged_vlans' in int:
+        int['tagged_vlans'] = [netbox_vlan_ids[i] for i in int['tagged_vlans']]
+    path = f'/api/dcim/interfaces/{int_id}/'
     url = base_url + path
-    response = requests.patch(url, json=body, headers=netbox_headers, verify=False)
-    pprint(response.json())
-    print(response.status_code)
+    try:
+        response = requests.patch(url, json=int, headers=netbox_headers, verify=False)
+        response.raise_for_status()
+    except requests.exceptions.RequestException as excpt:
+        print(f'Unable to make change, {excpt}')
 
 
 switches = get_netbox_devices()
 netbox_vlan_ids = get_netbox_vlans()
-#pprint(switches)
-#pprint(netbox_vlan_ids)
-
 for name, info in switches.items():
-    exos_headers = exos_auth(info['ip'])
-    exos_interfaces = get_exos_interfaces(info['ip'], exos_headers)
-    netbox_interfaces = get_netbox_interfaces(info)
-    interface_updates = get_int_updates(netbox_interfaces, exos_interfaces)
-
-    for int in interface_updates:
-        set_netbox_interface(int)
+    try:
+        exos_headers = exos_auth(info['ip'])
+        exos_interfaces = get_exos_interfaces(info['ip'], exos_headers)
+        netbox_interfaces = get_netbox_interfaces(info)
+        interface_updates = get_int_updates(netbox_interfaces, exos_interfaces)
+        for int in interface_updates:
+            set_netbox_interface(int)
+            break
         break
-
-    # pprint(interface_updates)
-    # pprint(netbox_interfaces)
-    # pprint(exos_interfaces)
-    break
+    except:
+        continue
