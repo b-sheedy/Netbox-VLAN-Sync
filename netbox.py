@@ -8,9 +8,7 @@ load_dotenv()
 urllib3.disable_warnings()
 
 base_url = 'https://netbox.calgaryflames.com'
-netbox_headers = {'Accept': 'application/json',
-           'Content-Type': 'application/json',
-           'Authorization': f'Token {os.environ.get('netbox_token')}'}
+site = 'saddledome'
 
 def get_netbox(path,params):
     url = base_url + path
@@ -23,7 +21,7 @@ def get_netbox(path,params):
 
 def get_netbox_devices():
     path = '/api/dcim/devices/'
-    params = {'manufacturer': 'extreme-networks', 'role': 'switch'}
+    params = {'manufacturer': 'extreme-networks', 'role': 'switch', 'site': site}
     api_data = get_netbox(path, params)
     collector = {}
     for switch in api_data:
@@ -38,7 +36,7 @@ def get_netbox_devices():
 
 def get_netbox_vlans():
     path = '/api/ipam/vlans/'
-    params = {'brief': 1, 'site': ['saddledome', 'null']}
+    params = {'brief': 1, 'site': [site, 'null']}
     api_data = get_netbox(path, params)
     collector = {}
     for vlan in api_data:
@@ -139,6 +137,10 @@ def set_netbox_interface(int):
     except requests.exceptions.RequestException as excpt:
         print(f'Unable to make change, {excpt}')
 
+
+netbox_headers = {'Accept': 'application/json',
+           'Content-Type': 'application/json',
+           'Authorization': f'Token {os.environ.get('netbox_token')}'}
 
 switches = get_netbox_devices()
 netbox_vlan_ids = get_netbox_vlans()
