@@ -30,16 +30,14 @@ def get_netbox_devices():
     path = '/api/dcim/devices/'
     params = {'manufacturer': 'extreme-networks', 'role': 'switch', 'site': site}
     api_data = get_netbox(path, params)
-    collector = {}
+    device_collector = {}
     for switch in api_data:
-        if switch['virtual_chassis'] == None:
-            collector[switch['name']] = {'device_id': switch['id'],
-                                         'ip': switch['primary_ip']['address'].split('/')[0]}
-        elif switch['vc_position'] == 1:
-            collector[switch['name']] = {'device_id': switch['id'],
-                                         'vc_id': switch['virtual_chassis']['id'],
-                                         'ip': switch['primary_ip']['address'].split('/')[0]}
-    return collector
+        if switch['virtual_chassis'] == None or switch['vc_position'] == 1:
+            device_collector[switch['name']] = {'device_id': switch['id'],
+                                                'ip': switch['primary_ip']['address'].split('/')[0]}
+            if switch['vc_position'] == 1:
+                device_collector[switch['name']]['vc_id'] = switch['virtual_chassis']['id']
+    return device_collector
 
 def get_netbox_vlans():
     path = '/api/ipam/vlans/'
