@@ -3,6 +3,7 @@ import re
 import urllib3
 import os
 import sys
+import logging
 from dotenv import load_dotenv
 
 base_url = 'https://netbox.calgaryflames.com'
@@ -23,7 +24,7 @@ def get_netbox(path,params):
             api_data.extend(response.json()['results'])
         return api_data
     except requests.exceptions.RequestException as excpt:
-        print('Unable to connect to Netbox', excpt)
+        logger.error(f'Unable to connect to Netbox, {excpt}')
         raise
 
 def get_netbox_devices():
@@ -80,7 +81,7 @@ def exos_auth(ip):
         headers['Cookie'] = f'x-auth-token={token}'
         return headers
     except requests.exceptions.RequestException as excpt:
-        print(f'Unable to retrieve RESTCONF token, {excpt}')
+        logger.error(f'Unable to retrieve RESTCONF token, {excpt}')
         raise
 
 def get_exos_interfaces(ip, headers):
@@ -101,7 +102,7 @@ def get_exos_interfaces(ip, headers):
                     collector[int['name']]['untagged_vlan'] = int['openconfig-if-ethernet:ethernet']['openconfig-vlan:switched-vlan']['state'].get('access-vlan', None)
         return collector
     except requests.exceptions.RequestException as excpt:
-        print(f'Unable to retrieve RESTCONF data, {excpt}')
+        logger.error(f'Unable to retrieve RESTCONF data, {excpt}')
         raise
 
 def get_int_updates(netbox_interfaces, exos_interfaces):
@@ -123,13 +124,13 @@ def get_int_updates(netbox_interfaces, exos_interfaces):
                     update['untagged_vlan'] = info['untagged_vlan']
                 collector.append(update)
         except KeyError:
-            print(f'Interface {interface} not found in Netbox')
+            logger.error(f'Interface {interface} not found in Netbox')
     return collector
 
 def set_netbox_interface(int):
     int_id = int.pop('int_id')
     port = int.pop('port')
-    print(f'Setting interface {port} untagged VLAN to {int.get('untagged_vlan', 'None')} and tagged VLAN(s) to {int.get('tagged_vlans', 'None')}')
+    logger.info(f'Setting interface {port} untagged VLAN to {int.get('untagged_vlan', 'None')} and tagged VLAN(s) to {int.get('tagged_vlans', 'None')}')
     if 'untagged_vlan' in int:
         int['untagged_vlan'] = netbox_vlan_ids[int['untagged_vlan']]
     if 'tagged_vlans' in int:
@@ -140,8 +141,12 @@ def set_netbox_interface(int):
         response = requests.patch(url, json=int, headers=netbox_headers, verify=False)
         response.raise_for_status()
     except requests.exceptions.RequestException as excpt:
-        print(f'Unable to make change, {excpt}')
+        logger.error(f'Unable to make change, {excpt}')
 
+
+logging.basicConfig(level=logging.INFO, filename='vlansync.log', filemode='w', 
+                    format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 netbox_headers = {'Accept': 'application/json',
                   'Content-Type': 'application/json',
@@ -155,7 +160,7 @@ except:
 
 for name, info in switches.items():
     try:
-        print('Connecting to switch', name)
+        logger.info(f'Connecting to switch {name}')
         exos_headers = exos_auth(info['ip'])
         exos_interfaces = get_exos_interfaces(info['ip'], exos_headers)
         netbox_interfaces = get_netbox_interfaces(info)
@@ -165,7 +170,7 @@ for name, info in switches.items():
                 set_netbox_interface(int)
             break
         else:
-            print('No updates found')
+            logger.info('No updates found')
             break
     except:
         break
