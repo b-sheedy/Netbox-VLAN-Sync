@@ -69,7 +69,7 @@ def get_netbox_interfaces(info):
     return collector
 
 def exos_auth(ip):
-    headers = {'Content-Type': 'application/json',}
+    headers = {'Content-Type': 'application/json'}
     json = {'username': os.environ.get('exos_uname'),
             'password': os.environ.get('exos_pwd')}
     url = f'https://{ip}/auth/token'
@@ -144,8 +144,8 @@ def set_netbox_interface(int):
 
 
 netbox_headers = {'Accept': 'application/json',
-           'Content-Type': 'application/json',
-           'Authorization': f'Token {os.environ.get('netbox_token')}'}
+                  'Content-Type': 'application/json',
+                  'Authorization': f'Token {os.environ.get('netbox_token')}'}
 
 try:
     switches = get_netbox_devices()
@@ -160,9 +160,12 @@ for name, info in switches.items():
         exos_interfaces = get_exos_interfaces(info['ip'], exos_headers)
         netbox_interfaces = get_netbox_interfaces(info)
         interface_updates = get_int_updates(netbox_interfaces, exos_interfaces)
-        for int in interface_updates:
-            set_netbox_interface(int)
+        if interface_updates:
+            for int in interface_updates:
+                set_netbox_interface(int)
             break
-        break
+        else:
+            print('No updates found')
+            break
     except:
         break
