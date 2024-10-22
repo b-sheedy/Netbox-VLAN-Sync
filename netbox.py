@@ -2,22 +2,29 @@ import requests
 import re
 import urllib3
 import os
+import sys
 from dotenv import load_dotenv
-
-load_dotenv()
-urllib3.disable_warnings()
 
 base_url = 'https://netbox.calgaryflames.com'
 site = 'saddledome'
 
+load_dotenv()
+urllib3.disable_warnings()
+
 def get_netbox(path,params):
     url = base_url + path
-    response = requests.get(url, params=params, headers=netbox_headers, verify=False)
-    api_data = response.json()['results']
-    while response.json()['next'] != None:
-        response = requests.get(response.json()['next'], params=params, headers=netbox_headers, verify=False)
-        api_data.extend(response.json()['results'])
-    return api_data
+    try:
+        response = requests.get(url, params=params, headers=netbox_headers, verify=False)
+        response.raise_for_status()
+        api_data = response.json()['results']
+        while response.json()['next'] != None:
+            response = requests.get(response.json()['next'], params=params, headers=netbox_headers, verify=False)
+            response.raise_for_status()
+            api_data.extend(response.json()['results'])
+        return api_data
+    except requests.exceptions.RequestException as excpt:
+        print('Unable to connect to Netbox', excpt)
+        raise
 
 def get_netbox_devices():
     path = '/api/dcim/devices/'
@@ -142,8 +149,12 @@ netbox_headers = {'Accept': 'application/json',
            'Content-Type': 'application/json',
            'Authorization': f'Token {os.environ.get('netbox_token')}'}
 
-switches = get_netbox_devices()
-netbox_vlan_ids = get_netbox_vlans()
+try:
+    switches = get_netbox_devices()
+    netbox_vlan_ids = get_netbox_vlans()
+except:
+    sys.exit(1)
+
 for name, info in switches.items():
     try:
         print('Connecting to switch', name)
