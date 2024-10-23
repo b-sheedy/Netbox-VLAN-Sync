@@ -1,6 +1,5 @@
 import requests
 import re
-import urllib3
 import os
 import sys
 import logging
@@ -9,31 +8,21 @@ from email.message import EmailMessage
 from dotenv import load_dotenv
 
 load_dotenv()
-urllib3.disable_warnings()
-
-base_url = os.environ.get('netbox_url')
-mail_server = os.environ.get('mail_host')
-log_file = os.environ.get('log_filename')
-site = os.environ.get('netbox_site')
 
 def get_netbox(path,params):
-    url = base_url + path
-    try:
-        response = requests.get(url, params=params, headers=netbox_headers, verify=False)
+    url = netbox_base_url + path
+    response = requests.get(url, params=params, headers=netbox_headers, verify=False)
+    response.raise_for_status()
+    api_data = response.json()['results']
+    while response.json()['next'] != None:
+        response = requests.get(response.json()['next'], params=params, headers=netbox_headers, verify=False)
         response.raise_for_status()
-        api_data = response.json()['results']
-        while response.json()['next'] != None:
-            response = requests.get(response.json()['next'], params=params, headers=netbox_headers, verify=False)
-            response.raise_for_status()
-            api_data.extend(response.json()['results'])
-        return api_data
-    except requests.exceptions.RequestException as excpt:
-        logger.error(f'Unable to connect to Netbox, {excpt}')
-        raise
+        api_data.extend(response.json()['results'])
+    return api_data
 
 def get_netbox_devices():
     path = '/api/dcim/devices/'
-    params = {'manufacturer': 'extreme-networks', 'role': 'switch', 'site': site}
+    params = {'manufacturer': 'extreme-networks', 'role': 'switch', 'site': netbox_site}
     api_data = get_netbox(path, params)
     device_collector = {}
     for switch in api_data:
@@ -46,43 +35,42 @@ def get_netbox_devices():
 
 def get_netbox_vlans():
     path = '/api/ipam/vlans/'
-    params = {'brief': 1, 'site': [site, 'null']}
+    params = {'brief': 1, 'site': [netbox_site, 'null']}
     api_data = get_netbox(path, params)
-    collector = {}
+    vlan_collector = {}
     for vlan in api_data:
-        collector[vlan['vid']] = vlan['id']
-    return collector
+        vlan_collector[vlan['vid']] = vlan['id']
+    return vlan_collector
 
 def get_netbox_interfaces(info):
     path = '/api/dcim/interfaces/'
     params = {'enabled': True}
-    if info.get('vc_id'):
+    if 'vc_id' in info:
         params['virtual_chassis_id'] = info['vc_id']
     else:
         params['device_id'] = info['device_id']
     api_data = get_netbox(path, params)
-    collector = {}
+    int_collector = {}
     for interface in api_data:
         if re.search(r'\d:\d+:?\d?', interface['name']):
             mode = interface['mode']['value'] if interface['mode'] else None
-            untagged =  interface['untagged_vlan']['vid'] if interface['untagged_vlan'] else None
+            untagged = interface['untagged_vlan']['vid'] if interface['untagged_vlan'] else None
             tagged = [vlan['vid'] for vlan in interface['tagged_vlans']]
-            collector[interface['name']] = {'int_id': interface['id'],
-                                            'mode': mode,
-                                            'tagged_vlans': sorted(tagged),
-                                            'untagged_vlan': untagged}
-    return collector
+            int_collector[interface['name']] = {'int_id': interface['id'],
+                                                'mode': mode,
+                                                'tagged_vlans': sorted(tagged),
+                                                'untagged_vlan': untagged}
+    return int_collector
 
 def exos_auth(ip):
     headers = {'Content-Type': 'application/json'}
-    json = {'username': os.environ.get('exos_uname'),
+    body = {'username': os.environ.get('exos_uname'),
             'password': os.environ.get('exos_pwd')}
     url = f'https://{ip}/auth/token'
     try:
-        response = requests.post(url, json=json, headers=headers, verify=False)
+        response = requests.post(url, json=body, headers=headers, verify=False)
         response.raise_for_status()
-        token = response.json()['token']
-        headers['Cookie'] = f'x-auth-token={token}'
+        headers['Cookie'] = f'x-auth-token={response.json()['token']}'
         return headers
     except requests.exceptions.RequestException as excpt:
         logger.error(f'Unable to retrieve RESTCONF token, {excpt}')
@@ -94,42 +82,45 @@ def get_exos_interfaces(ip, headers):
     try:
         response = requests.get(url + filter, headers=headers, verify=False)
         response.raise_for_status()
-        collector = {}
+        int_collector = {}
         for int in response.json():
             if int['state']['oper-status'] != 'NOT_PRESENT':
-                collector[int['name']] = {'mode': int['openconfig-if-ethernet:ethernet']['openconfig-vlan:switched-vlan']['state']['interface-mode'].lower(),
-                                        'tagged_vlans': sorted(int['openconfig-if-ethernet:ethernet']['openconfig-vlan:switched-vlan']['state'].get('trunk-vlans', []))}
-                if collector[int['name']]['mode'] == 'trunk':
-                    collector[int['name']]['mode'] = 'tagged'
-                    collector[int['name']]['untagged_vlan'] = int['openconfig-if-ethernet:ethernet']['openconfig-vlan:switched-vlan']['state'].get('native-vlan', None)
-                if collector[int['name']]['mode'] == 'access':
-                    collector[int['name']]['untagged_vlan'] = int['openconfig-if-ethernet:ethernet']['openconfig-vlan:switched-vlan']['state'].get('access-vlan', None)
-        return collector
+                int_state = int['openconfig-if-ethernet:ethernet']['openconfig-vlan:switched-vlan']['state']
+                int_collector[int['name']] = {'mode': int_state['interface-mode'].lower(),
+                                              'tagged_vlans': sorted(int_state.get('trunk-vlans', []))}
+                if int_collector[int['name']]['mode'] == 'trunk':
+                    int_collector[int['name']]['mode'] = 'tagged'
+                    int_collector[int['name']]['untagged_vlan'] = int_state.get('native-vlan', None)
+                if int_collector[int['name']]['mode'] == 'access':
+                    int_collector[int['name']]['untagged_vlan'] = int_state.get('access-vlan', None)
+        return int_collector
     except requests.exceptions.RequestException as excpt:
         logger.error(f'Unable to retrieve RESTCONF data, {excpt}')
         raise
 
 def get_int_updates(netbox_interfaces, exos_interfaces):
-    collector = []
-    for interface, info in exos_interfaces.items():
+    update_collector = []
+    for int, info in exos_interfaces.items():
         try:
             update = {}
             flag_tagged = False
             flag_untagged = False
-            if info['tagged_vlans'] != netbox_interfaces[interface]['tagged_vlans']:
+            if info['tagged_vlans'] != netbox_interfaces[int]['tagged_vlans']:
                 flag_tagged = True
-            if info['untagged_vlan'] != netbox_interfaces[interface]['untagged_vlan']:
+            if info['untagged_vlan'] != netbox_interfaces[int]['untagged_vlan']:
                 flag_untagged = True
             if flag_tagged == True or flag_untagged == True:
-                update = {'port': interface, 'int_id': netbox_interfaces[interface]['int_id'], 'mode': info['mode']}
+                update = {'port': int,
+                          'int_id': netbox_interfaces[int]['int_id'],
+                          'mode': info['mode']}
                 if flag_tagged == True:
                     update['tagged_vlans'] = info['tagged_vlans']
                 if flag_untagged == True:
                     update['untagged_vlan'] = info['untagged_vlan']
-                collector.append(update)
+                update_collector.append(update)
         except KeyError:
-            logger.error(f'Interface {interface} not found in Netbox')
-    return collector
+            logger.error(f'Interface {int} not found in Netbox')
+    return update_collector
 
 def set_netbox_interface(int):
     int_id = int.pop('int_id')
@@ -140,7 +131,7 @@ def set_netbox_interface(int):
     if 'tagged_vlans' in int:
         int['tagged_vlans'] = [netbox_vlan_ids[i] for i in int['tagged_vlans']]
     path = f'/api/dcim/interfaces/{int_id}/'
-    url = base_url + path
+    url = netbox_base_url + path
     try:
         response = requests.patch(url, json=int, headers=netbox_headers, verify=False)
         response.raise_for_status()
@@ -159,6 +150,11 @@ def send_log():
     smtp.quit()
 
 
+netbox_base_url = os.environ.get('netbox_url')
+mail_server = os.environ.get('mail_server')
+log_file = os.environ.get('log_file')
+netbox_site = os.environ.get('netbox_site')
+
 logging.basicConfig(level=logging.INFO, filename=log_file, filemode='w', 
                     format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -170,7 +166,8 @@ netbox_headers = {'Accept': 'application/json',
 try:
     switches = get_netbox_devices()
     netbox_vlan_ids = get_netbox_vlans()
-except:
+except Exception as excpt:
+    logger.error(f'Unable to connect to Netbox, {excpt}', exc_info=True)
     send_log()
     sys.exit(1)
 
@@ -188,7 +185,8 @@ for name, info in switches.items():
         else:
             logger.info('No updates found')
             break
-    except:
+    except Exception as excpt:
+        logger.error(excpt, exc_info=True)
         break
 
 logger.info('Sync complete')
