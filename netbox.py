@@ -4,13 +4,17 @@ import urllib3
 import os
 import sys
 import logging
+import smtplib
+from email.message import EmailMessage
 from dotenv import load_dotenv
-
-base_url = 'https://netbox.calgaryflames.com'
-site = 'saddledome'
 
 load_dotenv()
 urllib3.disable_warnings()
+
+base_url = os.environ.get('netbox_url')
+mail_server = os.environ.get('mail_host')
+log_file = os.environ.get('log_filename')
+site = os.environ.get('netbox_site')
 
 def get_netbox(path,params):
     url = base_url + path
@@ -143,8 +147,19 @@ def set_netbox_interface(int):
     except requests.exceptions.RequestException as excpt:
         logger.error(f'Unable to make change, {excpt}')
 
+def send_log():
+    with open(log_file) as file:
+        log_msg = EmailMessage()
+        log_msg.set_content(file.read())
+    log_msg['Subject'] = 'VLAN Sync Log'
+    log_msg['From'] = os.environ.get('email_from')
+    log_msg['To'] = os.environ.get('email_to')
+    smtp = smtplib.SMTP(mail_server)
+    smtp.send_message(log_msg)
+    smtp.quit()
 
-logging.basicConfig(level=logging.INFO, filename='vlansync.log', filemode='w', 
+
+logging.basicConfig(level=logging.INFO, filename=log_file, filemode='w', 
                     format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -156,6 +171,7 @@ try:
     switches = get_netbox_devices()
     netbox_vlan_ids = get_netbox_vlans()
 except:
+    send_log()
     sys.exit(1)
 
 for name, info in switches.items():
@@ -174,3 +190,6 @@ for name, info in switches.items():
             break
     except:
         break
+
+logger.info('Sync complete')
+send_log()
