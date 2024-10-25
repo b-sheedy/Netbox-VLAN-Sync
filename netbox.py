@@ -206,9 +206,9 @@ def set_netbox_interface(int):
     """
     int_id = int.pop('int_id')
     # Replace VLAN ids with their Netbox id if necessary
-    if int['untagged_vlan']:
+    if 'untagged_vlan' in int and int['untagged_vlan']:
         int['untagged_vlan'] = netbox_vlan_ids[int['untagged_vlan']]
-    if int['tagged_vlans']:
+    if 'tagged_vlans' in int and int['tagged_vlans']:
         int['tagged_vlans'] = [netbox_vlan_ids[i] for i in int['tagged_vlans']]
     path = f'/api/dcim/interfaces/{int_id}/'
     url = netbox_base_url + path
