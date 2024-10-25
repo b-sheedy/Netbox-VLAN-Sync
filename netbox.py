@@ -220,15 +220,18 @@ def set_netbox_interface(int):
 
 def send_log():
     """Email log file"""
-    with open(log_file) as file:
-        log_msg = EmailMessage()
-        log_msg.set_content(file.read())
-    log_msg['Subject'] = 'VLAN Sync Log'
-    log_msg['From'] = os.environ.get('email_from')
-    log_msg['To'] = os.environ.get('email_to')
-    smtp = smtplib.SMTP(mail_server)
-    smtp.send_message(log_msg)
-    smtp.quit()
+    try:
+        with open(log_file) as file:
+            log_msg = EmailMessage()
+            log_msg.set_content(file.read())
+        log_msg['Subject'] = 'VLAN Sync Log'
+        log_msg['From'] = os.environ.get('email_from')
+        log_msg['To'] = os.environ.get('email_to')
+        smtp = smtplib.SMTP(mail_server, timeout=20)
+        smtp.send_message(log_msg)
+        smtp.quit()
+    except Exception as err:
+        logger.error(f'Unable to email log, {err}', exc_info=True)
 
 # Main body starts here
 load_dotenv() # Load variables from .env file
