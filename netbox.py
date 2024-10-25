@@ -160,6 +160,8 @@ def get_exos_interfaces(ip, headers):
                     int_collector[int['name']]['untagged_vlan'] = int_state.get('native-vlan', None)
                 if int_collector[int['name']]['mode'] == 'access':
                     int_collector[int['name']]['untagged_vlan'] = int_state.get('access-vlan', None)
+                if not int_collector[int['name']]['untagged_vlan'] and not int_collector[int['name']]['tagged_vlans']:
+                    int_collector[int['name']]['mode'] = None
         return int_collector
     except requests.exceptions.RequestException as err:
         logger.error(f'Unable to retrieve RESTCONF data, {err}')
