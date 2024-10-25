@@ -205,13 +205,10 @@ def set_netbox_interface(int):
         int (dict): VLAN information for one interface
     """
     int_id = int.pop('int_id')
-    port = int.pop('port')
-    logger.info(f'Setting interface {port} untagged VLAN to {int.get('untagged_vlan', 'None')}'
-                f' and tagged VLAN(s) to {int.get('tagged_vlans', 'None')}')
-    # Replace VLAN ids with their Netbox id
-    if 'untagged_vlan' in int:
+    # Replace VLAN ids with their Netbox id if necessary
+    if int['untagged_vlan']:
         int['untagged_vlan'] = netbox_vlan_ids[int['untagged_vlan']]
-    if 'tagged_vlans' in int:
+    if int['tagged_vlans']:
         int['tagged_vlans'] = [netbox_vlan_ids[i] for i in int['tagged_vlans']]
     path = f'/api/dcim/interfaces/{int_id}/'
     url = netbox_base_url + path
@@ -237,7 +234,7 @@ def send_log():
 load_dotenv() # Load variables from .env file
 netbox_base_url = os.environ.get('netbox_url')
 mail_server = os.environ.get('mail_server')
-log_file = os.environ.get('log_file')
+log_file = os.path.join(os.path.dirname(__file__), os.environ.get('log_file'))
 netbox_site = os.environ.get('netbox_site')
 
 # Set logger configuration
@@ -265,6 +262,13 @@ for name, info in switches.items():
         interface_updates = get_int_updates(netbox_interfaces, exos_interfaces) # Compare VLAN info
         if interface_updates:
             for int in interface_updates:
+                port = int.pop('port')
+                log_msg = (f'Setting interface {port} ') # Generate log message
+                if 'untagged_vlan' in int:
+                    log_msg += (f'- Untagged VLAN to {int['untagged_vlan']} -')
+                if 'tagged_vlans' in int:
+                    log_msg += (f'- Tagged VLAN to {', '.join(map(str, int['tagged_vlans'])) or 'None'} -')
+                logger.info(log_msg)
                 set_netbox_interface(int) # Update VLAN info in Netbox for each interface
             break
         else:
