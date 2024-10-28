@@ -55,21 +55,23 @@ def get_netbox_devices():
     """Get Extreme Networks switches from Netbox
     
     Returns:
-        dict containing device_id, ip and virtual chassis id if applicable
+        list containing switch name, device_id, ip and virtual chassis id if applicable
     """
     path = '/api/dcim/devices/'
     # Filter to extreme networks switches at specified site
     params = {'manufacturer': 'extreme-networks', 'role': 'switch', 'site': netbox_site}
     api_data = get_netbox(path, params)
-    device_collector = {}
+    device_collector = []
     for switch in api_data:
+        device = {}
         # Only add switch to dict if single switch or first in stack
         if switch['virtual_chassis'] == None or switch['vc_position'] == 1:
-            device_collector[switch['name']] = {'device_id': switch['id'],
-                                                'ip': switch['primary_ip']['address'].split('/')[0]}
+            device = {'name': switch['name'], 'device_id': switch['id'],
+                      'ip': switch['primary_ip']['address'].split('/')[0]}
             # If part of stack, add virtual chassis id to dict
             if switch['vc_position'] == 1:
-                device_collector[switch['name']]['vc_id'] = switch['virtual_chassis']['id']
+                device['vc_id'] = switch['virtual_chassis']['id']
+            device_collector.append(device)
     return device_collector
 
 def get_netbox_vlans():
@@ -267,12 +269,12 @@ except Exception as err:
     send_log()
     sys.exit(1)
 
-for name, info in switches.items():
+for switch in switches:
     try:
-        logger.info(f'Connecting to switch {name}')
-        exos_headers = exos_auth(info['ip']) # Authenticate to switch
-        exos_interfaces = get_exos_interfaces(info['ip'], exos_headers) # Get VLAN info from switch
-        netbox_interfaces = get_netbox_interfaces(info) # Get VLAN info from Netbox
+        logger.info(f'Connecting to switch {switch['name']}')
+        exos_headers = exos_auth(switch['ip']) # Authenticate to switch
+        exos_interfaces = get_exos_interfaces(switch['ip'], exos_headers) # Get VLAN info from switch
+        netbox_interfaces = get_netbox_interfaces(switch) # Get VLAN info from Netbox
         interface_updates = get_int_updates(netbox_interfaces, exos_interfaces) # Compare VLAN info
         if interface_updates:
             for int in interface_updates:
