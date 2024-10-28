@@ -7,7 +7,6 @@ with the following variables defined:
 
 netbox_token = API token for Netbox
 netbox_url = Netbox URL
-netbox_site = Netbox site containing devices
 mail_server = SMTP server
 exos_uname = Admin username for switches
 exos_pwd = Admin password for switches
@@ -15,9 +14,14 @@ log_file = Desired log file name
 email_from = From email address for log
 email_to = To email address for log
 
+Args:
+    --dryrun: Log and email changes but do not write them to Netbox
+    --site {saddledome | mcmahon}: Netbox site to query data from
+
 Author: Brendan Sheedy
 """
 
+import argparse
 import os
 import re
 import sys
@@ -236,11 +240,16 @@ def send_log():
         logger.error(f'Unable to email log, {err}', exc_info=True)
 
 # Main body starts here
-load_dotenv() # Load variables from .env file
+# Load variables from .env file and parse arguments
+load_dotenv()
+parser = argparse.ArgumentParser()
+parser.add_argument('--dryrun', help='do not write changes to Netbox if included', action='store_true')
+parser.add_argument('--site', choices=['saddledome', 'mcmahon'], default='saddledome')
+args = parser.parse_args()
 netbox_base_url = os.environ.get('netbox_url')
 mail_server = os.environ.get('mail_server')
 log_file = os.path.join(os.path.dirname(__file__), os.environ.get('log_file'))
-netbox_site = os.environ.get('netbox_site')
+netbox_site = args.site
 
 # Set logger configuration
 logging.basicConfig(level=logging.INFO, filename=log_file, filemode='w', 
@@ -274,7 +283,8 @@ for name, info in switches.items():
                 if 'tagged_vlans' in int:
                     log_msg += (f'- Tagged VLAN to {', '.join(map(str, int['tagged_vlans'])) or 'None'} -')
                 logger.info(log_msg)
-                set_netbox_interface(int) # Update VLAN info in Netbox for each interface
+                if not args.dryrun:
+                    set_netbox_interface(int) # Update VLAN info in Netbox for each interface
             break
         else:
             logger.info('No updates found')
