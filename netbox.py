@@ -212,18 +212,18 @@ def set_netbox_interface(int):
     Args:
         int (dict): VLAN information for one interface
     """
-    int_id = int.pop('int_id')
-    # Replace VLAN ids with their Netbox id if necessary
-    if 'untagged_vlan' in int and int['untagged_vlan']:
-        int['untagged_vlan'] = netbox_vlan_ids[int['untagged_vlan']]
-    if 'tagged_vlans' in int and int['tagged_vlans']:
-        int['tagged_vlans'] = [netbox_vlan_ids[i] for i in int['tagged_vlans']]
-    path = f'/api/dcim/interfaces/{int_id}/'
-    url = netbox_base_url + path
     try:
+        int_id = int.pop('int_id')
+        # Replace VLAN ids with their Netbox id if necessary
+        if 'untagged_vlan' in int and int['untagged_vlan']:
+            int['untagged_vlan'] = netbox_vlan_ids[int['untagged_vlan']]
+        if 'tagged_vlans' in int and int['tagged_vlans']:
+            int['tagged_vlans'] = [netbox_vlan_ids[i] for i in int['tagged_vlans']]
+        path = f'/api/dcim/interfaces/{int_id}/'
+        url = netbox_base_url + path
         response = requests.patch(url, json=int, headers=netbox_headers, verify=False)
         response.raise_for_status()
-    except requests.exceptions.RequestException as err:
+    except Exception as err:
         logger.error(f'Unable to make change, {err}')
 
 def send_log():
@@ -287,13 +287,10 @@ for switch in switches:
                 logger.info(log_msg)
                 if not args.dryrun:
                     set_netbox_interface(int) # Update VLAN info in Netbox for each interface
-            break
         else:
             logger.info('No updates found')
-            break
     except Exception as err:
         logger.error(err, exc_info=True)
-        break
 
 logger.info('Sync complete')
 send_log()
