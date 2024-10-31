@@ -7,6 +7,7 @@ with the following variables defined:
 
 netbox_token = API token for Netbox
 netbox_url = Netbox URL
+netbox_sites = Valid site objects in Netbox, first will be default
 mail_server = SMTP server
 exos_uname = Admin username for switches
 exos_pwd = Admin password for switches
@@ -16,17 +17,18 @@ email_to = To email address for log
 
 Args:
     --dryrun: Log and email changes but do not write them to Netbox
-    --site {saddledome | mcmahon}: Netbox site to query data from
+    --site {a site listed in .env file}: Netbox site to query data from, 
+        if unspecified first site listed in .env will be used
 
 Author: Brendan Sheedy
 """
 
 import argparse
+import logging
 import os
 import re
-import sys
-import logging
 import smtplib
+import sys
 from email.message import EmailMessage
 
 import requests
@@ -46,7 +48,8 @@ def get_netbox(path, params):
     response.raise_for_status()
     api_data = response.json()['results']
     while response.json()['next'] != None: # Fetch data from additional pages if needed
-        response = requests.get(response.json()['next'], params=params, headers=netbox_headers, verify=False)
+        response = requests.get(response.json()['next'], params=params,
+                                headers=netbox_headers, verify=False)
         response.raise_for_status()
         api_data.extend(response.json()['results'])
     return api_data
@@ -166,7 +169,8 @@ def get_exos_interfaces(ip, headers):
                     int_collector[int['name']]['untagged_vlan'] = int_state.get('native-vlan', None)
                 if int_collector[int['name']]['mode'] == 'access':
                     int_collector[int['name']]['untagged_vlan'] = int_state.get('access-vlan', None)
-                if not int_collector[int['name']]['untagged_vlan'] and not int_collector[int['name']]['tagged_vlans']:
+                if (not int_collector[int['name']]['untagged_vlan'] and
+                    not int_collector[int['name']]['tagged_vlans']):
                     int_collector[int['name']]['mode'] = None
         return int_collector
     except requests.exceptions.RequestException as err:
@@ -244,13 +248,14 @@ def send_log():
 # Main body starts here
 # Load variables from .env file and parse arguments
 load_dotenv()
-parser = argparse.ArgumentParser()
-parser.add_argument('--dryrun', help='do not write changes to Netbox if included', action='store_true')
-parser.add_argument('--site', choices=['saddledome', 'mcmahon'], default='saddledome')
-args = parser.parse_args()
 netbox_base_url = os.environ.get('netbox_url')
 mail_server = os.environ.get('mail_server')
 log_file = os.path.join(os.path.dirname(__file__), os.environ.get('log_file'))
+netbox_sites = os.environ.get('netbox_sites').split(',')
+parser = argparse.ArgumentParser()
+parser.add_argument('--dryrun', help='do not write changes to Netbox if included', action='store_true')
+parser.add_argument('--site', help='Netbox site', choices=[*netbox_sites], default=netbox_sites[0])
+args = parser.parse_args()
 netbox_site = args.site
 
 # Set logger configuration
