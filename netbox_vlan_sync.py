@@ -200,6 +200,8 @@ def get_dnos6_interfaces(ip):
                                                     'untagged_vlan': int(interface['vlan_id'][0]),
                                                     'tagged_vlans': []}
         if interface['mode'] == 'T' or interface['mode'] == 'G':
+            if interface['mode'] == 'G':
+                logger.warning(f'Interface {interface['interface']} set to General mode')
             tagged_vlans = ''.join(interface['vlan_id']).split(',')
             if tagged_vlans[0] == '2-4093':
                 int_collector[interface['interface']] = {'mode': 'tagged-all',
