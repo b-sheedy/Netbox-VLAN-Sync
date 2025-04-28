@@ -33,6 +33,7 @@ from email.message import EmailMessage
 
 import requests
 from dotenv import load_dotenv
+from netmiko import ConnectHandler
 
 def get_netbox(path, params):
     """Perform GET request to Netbox and return api data
@@ -183,6 +184,32 @@ def get_exos_interfaces(ip, headers):
     except requests.exceptions.RequestException as err:
         logger.error(f'Unable to retrieve RESTCONF data, {err}')
         raise
+
+def get_dnos6_interfaces(ip):
+    device = {"device_type": "dell_os6",
+              "host": ip,
+              "username": os.environ.get('exos_uname'),
+              "password": os.environ.get('exos_pwd')}
+    net_connect = ConnectHandler(**device)
+    response = net_connect.send_command('show interfaces status', use_textfsm=True, raise_parsing_error=True)
+    net_connect.disconnect()
+    int_collector = {}
+    for interface in response:
+        if interface['mode'] == 'A':
+            int_collector[interface['interface']] = {'mode': 'access',
+                                                    'untagged_vlan': int(interface['vlan_id'][0]),
+                                                    'tagged_vlans': []}
+        if interface['mode'] == 'T' or interface['mode'] == 'G':
+            tagged_vlans = ''.join(interface['vlan_id']).split(',')
+            if tagged_vlans[0] == '2-4093':
+                int_collector[interface['interface']] = {'mode': 'tagged-all',
+                                                        'untagged_vlan': None,
+                                                        'tagged_vlans': []}
+            else:            
+                int_collector[interface['interface']] = {'mode': 'tagged',
+                                                        'untagged_vlan': int(interface['native_vid']),
+                                                        'tagged_vlans': [int(i) for i in tagged_vlans]}
+    return int_collector
 
 def get_int_updates(netbox_interfaces, exos_interfaces):
     """Compare interface information from Netbox and switch and return updates
