@@ -284,8 +284,11 @@ except Exception as err:
 for switch in switches:
     try:
         logger.info(f'Connecting to switch {switch['name']}')
-        exos_headers = exos_auth(switch['ip']) # Authenticate to switch
-        exos_interfaces = get_exos_interfaces(switch['ip'], exos_headers) # Get VLAN info from switch
+        if switch['platform_id'] == 1:
+            exos_headers = exos_auth(switch['ip']) # Authenticate to switch
+            exos_interfaces = get_exos_interfaces(switch['ip'], exos_headers) # Get VLAN info from switch
+        if switch['platform_id'] == 2:
+            exos_interfaces = get_dnos6_interfaces(switch['ip'])            
         netbox_interfaces = get_netbox_interfaces(switch) # Get VLAN info from Netbox
         interface_updates = get_int_updates(netbox_interfaces, exos_interfaces) # Compare VLAN info
         if interface_updates:
