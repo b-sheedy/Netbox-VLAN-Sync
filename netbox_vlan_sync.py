@@ -118,7 +118,7 @@ def get_netbox_interfaces(info):
     int_collector = {}
     for interface in api_data:
         # Only return interfaces with slot:port naming convention, e.g. 1:19 or 1:53:1
-        if re.search(r'\d:\d+:?\d?', interface['name']):
+        if re.search(r'(\d:\d+:?\d?)|(\w{2}\d/\d/\d+)', interface['name']):
             mode = interface['mode']['value'] if interface['mode'] else None
             untagged = interface['untagged_vlan']['vid'] if interface['untagged_vlan'] else None
             tagged = [vlan['vid'] for vlan in interface['tagged_vlans']]
