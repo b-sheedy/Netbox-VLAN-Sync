@@ -167,19 +167,19 @@ def get_exos_interfaces(ip, headers):
         response = requests.get(url + filter, headers=headers, verify=False)
         response.raise_for_status()
         int_collector = {}
-        for int in response.json():
-            if int['state']['oper-status'] != 'NOT_PRESENT': # Do not include not present interfaces
-                int_state = int['openconfig-if-ethernet:ethernet']['openconfig-vlan:switched-vlan']['state']
-                int_collector[int['name']] = {'mode': int_state['interface-mode'].lower(),
+        for interface in response.json():
+            if interface['state']['oper-status'] != 'NOT_PRESENT': # Do not include not present interfaces
+                int_state = interface['openconfig-if-ethernet:ethernet']['openconfig-vlan:switched-vlan']['state']
+                int_collector[interface['name']] = {'mode': int_state['interface-mode'].lower(),
                                               'tagged_vlans': sorted(int_state.get('trunk-vlans', []))}
-                if int_collector[int['name']]['mode'] == 'trunk':
-                    int_collector[int['name']]['mode'] = 'tagged'
-                    int_collector[int['name']]['untagged_vlan'] = int_state.get('native-vlan', None)
-                if int_collector[int['name']]['mode'] == 'access':
-                    int_collector[int['name']]['untagged_vlan'] = int_state.get('access-vlan', None)
-                if (not int_collector[int['name']]['untagged_vlan'] and
-                    not int_collector[int['name']]['tagged_vlans']):
-                    int_collector[int['name']]['mode'] = None
+                if int_collector[interface['name']]['mode'] == 'trunk':
+                    int_collector[interface['name']]['mode'] = 'tagged'
+                    int_collector[interface['name']]['untagged_vlan'] = int_state.get('native-vlan', None)
+                if int_collector[interface['name']]['mode'] == 'access':
+                    int_collector[interface['name']]['untagged_vlan'] = int_state.get('access-vlan', None)
+                if (not int_collector[interface['name']]['untagged_vlan'] and
+                    not int_collector[interface['name']]['tagged_vlans']):
+                    int_collector[interface['name']]['mode'] = None
         return int_collector
     except requests.exceptions.RequestException as err:
         logger.error(f'Unable to retrieve RESTCONF data, {err}')
@@ -222,18 +222,18 @@ def get_int_updates(netbox_interfaces, exos_interfaces):
         list of interfaces with VLAN information that needs updating in Netbox
     """
     update_collector = []
-    for int, info in exos_interfaces.items():
+    for interface, info in exos_interfaces.items():
         try:
             update = {}
             flag_tagged = False
             flag_untagged = False
-            if info['tagged_vlans'] != netbox_interfaces[int]['tagged_vlans']:
+            if info['tagged_vlans'] != netbox_interfaces[interface]['tagged_vlans']:
                 flag_tagged = True
-            if info['untagged_vlan'] != netbox_interfaces[int]['untagged_vlan']:
+            if info['untagged_vlan'] != netbox_interfaces[interface]['untagged_vlan']:
                 flag_untagged = True
             if flag_tagged == True or flag_untagged == True:
-                update = {'port': int,
-                          'int_id': netbox_interfaces[int]['int_id'],
+                update = {'port': interface,
+                          'int_id': netbox_interfaces[interface]['int_id'],
                           'mode': info['mode']}
                 if flag_tagged == True:
                     update['tagged_vlans'] = info['tagged_vlans']
@@ -241,25 +241,25 @@ def get_int_updates(netbox_interfaces, exos_interfaces):
                     update['untagged_vlan'] = info['untagged_vlan']
                 update_collector.append(update)
         except KeyError:
-            logger.error(f'Interface {int} not found in Netbox')
+            logger.error(f'Interface {interface} not found in Netbox')
     return update_collector
 
-def set_netbox_interface(int):
+def set_netbox_interface(interface):
     """Update VLAN information for a single interface in Netbox 
     
     Args:
-        int (dict): VLAN information for one interface
+        interface (dict): VLAN information for one interface
     """
     try:
-        int_id = int.pop('int_id')
+        int_id = interface.pop('int_id')
         # Replace VLAN ids with their Netbox id if necessary
-        if 'untagged_vlan' in int and int['untagged_vlan']:
-            int['untagged_vlan'] = netbox_vlan_ids[int['untagged_vlan']]
-        if 'tagged_vlans' in int and int['tagged_vlans']:
-            int['tagged_vlans'] = [netbox_vlan_ids[i] for i in int['tagged_vlans']]
+        if 'untagged_vlan' in interface and interface['untagged_vlan']:
+            interface['untagged_vlan'] = netbox_vlan_ids[interface['untagged_vlan']]
+        if 'tagged_vlans' in interface and interface['tagged_vlans']:
+            interface['tagged_vlans'] = [netbox_vlan_ids[i] for i in interface['tagged_vlans']]
         path = f'/api/dcim/interfaces/{int_id}/'
         url = netbox_base_url + path
-        response = requests.patch(url, json=int, headers=netbox_headers, verify=False)
+        response = requests.patch(url, json=interface, headers=netbox_headers, verify=False)
         response.raise_for_status()
     except Exception as err:
         logger.error(f'Unable to make change, {err}')
@@ -319,16 +319,16 @@ for switch in switches:
         netbox_interfaces = get_netbox_interfaces(switch) # Get VLAN info from Netbox
         interface_updates = get_int_updates(netbox_interfaces, exos_interfaces) # Compare VLAN info
         if interface_updates:
-            for int in interface_updates:
-                port = int.pop('port')
+            for interface in interface_updates:
+                port = interface.pop('port')
                 log_msg = (f'Setting interface {port} ') # Generate log message
-                if 'untagged_vlan' in int:
-                    log_msg += (f'- Untagged VLAN to {int['untagged_vlan']} -')
-                if 'tagged_vlans' in int:
-                    log_msg += (f'- Tagged VLAN to {', '.join(map(str, int['tagged_vlans'])) or 'None'} -')
+                if 'untagged_vlan' in interface:
+                    log_msg += (f'- Untagged VLAN to {interface['untagged_vlan']} -')
+                if 'tagged_vlans' in interface:
+                    log_msg += (f'- Tagged VLAN to {', '.join(map(str, interface['tagged_vlans'])) or 'None'} -')
                 logger.info(log_msg)
                 if not args.dryrun:
-                    set_netbox_interface(int) # Update VLAN info in Netbox for each interface
+                    set_netbox_interface(interface) # Update VLAN info in Netbox for each interface
         else:
             logger.info('No updates found')
     except Exception as err:
