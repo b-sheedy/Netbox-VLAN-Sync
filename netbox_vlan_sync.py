@@ -55,21 +55,28 @@ def get_netbox(path, params):
     return api_data
 
 def get_netbox_devices():
-    """Get Extreme Networks switches from Netbox
+    """Get compatible switches from Netbox
+    Platform ID #1 = Extreme Networks Switch Engine
+    Platform ID #2 = Dell Network Operating System 6.x (N-series)
     
     Returns:
-        list containing switch name, device_id, ip and virtual chassis id if applicable
+        list of dictionaries containing switch name, device_id, platform_id,
+        ip and virtual chassis id if applicable
     """
     path = '/api/dcim/devices/'
-    # Filter to extreme networks switches at specified site
-    params = {'manufacturer': 'extreme-networks', 'role': 'switch', 'site': netbox_site}
+    # Filter to compatible platforms at specified site
+    params = {'platform_id': [1,2],
+              'role': 'switch',
+              'site': netbox_site}
     api_data = get_netbox(path, params)
     device_collector = []
     for switch in api_data:
         device = {}
         # Only add switch to dict if single switch or first in stack
         if switch['virtual_chassis'] == None or switch['vc_position'] == 1:
-            device = {'name': switch['name'], 'device_id': switch['id'],
+            device = {'name': switch['name'],
+                      'device_id': switch['id'],
+                      'platform_id': switch['platform']['id'],
                       'ip': switch['primary_ip']['address'].split('/')[0]}
             # If part of stack, add virtual chassis id to dict
             if switch['vc_position'] == 1:
