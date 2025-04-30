@@ -188,8 +188,8 @@ def get_exos_interfaces(ip, headers):
 def get_dnos6_interfaces(ip):
     device = {"device_type": "dell_os6",
               "host": ip,
-              "username": os.environ.get('exos_uname'),
-              "password": os.environ.get('exos_pwd')}
+              "username": os.environ.get('dell_uname'),
+              "password": os.environ.get('dell_pwd')}
     try:
         net_connect = ConnectHandler(**device)
         response = net_connect.send_command('show interfaces status', use_textfsm=True, raise_parsing_error=True)
