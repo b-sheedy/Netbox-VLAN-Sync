@@ -2,15 +2,17 @@
 """
 Script to retrieve a list of switches from a Netbox instance and sync
 port mode, untagged VLAN and tagged VLANs back to Netbox. Switches are
-assumed to be running Extreme Networks Switch Engine. Requires a .env file
-with the following variables defined:
+assumed to be running Extreme Networks Switch Engine or Dell Network OS
+6.x (N-series). Requires a .env file with the following variables defined:
 
 netbox_token = API token for Netbox
 netbox_url = Netbox URL
 netbox_sites = Valid site objects in Netbox, first will be default
 mail_server = SMTP server
-exos_uname = Admin username for switches
-exos_pwd = Admin password for switches
+exos_uname = Admin username for Extreme switches
+exos_pwd = Admin password for Extreme switches
+dell_uname = Admin username for Dell switches
+dell_pwd = Admin password for Dell switches
 log_file = Desired log file name
 email_from = From email address for log
 email_to = To email address for log
@@ -36,7 +38,8 @@ from dotenv import load_dotenv
 from netmiko import ConnectHandler, NetmikoAuthenticationException, NetmikoTimeoutException
 
 def get_netbox(path, params):
-    """Perform GET request to Netbox and return api data
+    """
+    Perform GET request to Netbox and return api data
     
     Args:
         path (str): the api endpoint, e.g. /api/dcim/sites/
@@ -48,7 +51,8 @@ def get_netbox(path, params):
     response = requests.get(url, params=params, headers=netbox_headers, verify=False)
     response.raise_for_status()
     api_data = response.json()['results']
-    while response.json()['next'] != None: # Fetch data from additional pages if needed
+    # Fetch data from additional pages if needed
+    while response.json()['next'] != None:
         response = requests.get(response.json()['next'], params=params,
                                 headers=netbox_headers, verify=False)
         response.raise_for_status()
@@ -56,7 +60,8 @@ def get_netbox(path, params):
     return api_data
 
 def get_netbox_devices():
-    """Get compatible switches from Netbox
+    """
+    Get compatible switches from Netbox
     Platform ID #1 = Extreme Networks Switch Engine
     Platform ID #2 = Dell Network Operating System 6.x (N-series)
     
@@ -86,7 +91,8 @@ def get_netbox_devices():
     return device_collector
 
 def get_netbox_vlans():
-    """Get VLANs and their ids from Netbox
+    """
+    Get VLANs and their ids from Netbox
     
     Returns:
         dict of vlan ids with corresponding netbox ids
@@ -100,7 +106,8 @@ def get_netbox_vlans():
     return vlan_collector
 
 def get_netbox_interfaces(info):
-    """Get interface VLAN information for specified switch from Netbox
+    """
+    Get interface VLAN information for specified switch from Netbox
     
     Args:
         info (dict): values for specified switch, requires device_id or vc_id keys
@@ -108,7 +115,8 @@ def get_netbox_interfaces(info):
         dict of interfaces with interface id, mode, tagged vlans and untagged vlan
     """
     path = '/api/dcim/interfaces/'
-    params = {'enabled': True} # Filter to enabled interfaces only
+    # Filter to enabled interfaces only
+    params = {'enabled': True}
     # If part of stack, retrieve interfaces based on virtual chassis id
     if 'vc_id' in info:
         params['virtual_chassis_id'] = info['vc_id']
@@ -117,7 +125,7 @@ def get_netbox_interfaces(info):
     api_data = get_netbox(path, params)
     int_collector = {}
     for interface in api_data:
-        # Only return interfaces with slot:port naming convention, e.g. 1:19 or 1:53:1
+        # Filter by interface name, e.g. 1:19, 1:53:1, or Gi1/0/19
         if re.search(r'(\d:\d+:?\d?)|(\w{2}\d/\d/\d+)', interface['name']):
             mode = interface['mode']['value'] if interface['mode'] else None
             untagged = interface['untagged_vlan']['vid'] if interface['untagged_vlan'] else None
@@ -129,7 +137,8 @@ def get_netbox_interfaces(info):
     return int_collector
 
 def exos_auth(ip):
-    """Authenticate to switch and return headers containing auth token
+    """
+    Authenticate to switch and return headers containing auth token
     
     Args:
         ip (str): ip address of switch to connect to
@@ -150,7 +159,8 @@ def exos_auth(ip):
         raise
 
 def get_exos_interfaces(ip, headers):
-    """Get interface VLAN information from switch
+    """
+    Get interface VLAN information from switch running Extreme Switch Engine
     
     Args:
         ip (str): ip address of switch to connect to
@@ -168,7 +178,8 @@ def get_exos_interfaces(ip, headers):
         response.raise_for_status()
         int_collector = {}
         for interface in response.json():
-            if interface['state']['oper-status'] != 'NOT_PRESENT': # Do not include not present interfaces
+            # Do not include not present interfaces
+            if interface['state']['oper-status'] != 'NOT_PRESENT':
                 int_state = interface['openconfig-if-ethernet:ethernet']['openconfig-vlan:switched-vlan']['state']
                 int_collector[interface['name']] = {'mode': int_state['interface-mode'].lower(),
                                               'tagged_vlans': sorted(int_state.get('trunk-vlans', []))}
@@ -186,39 +197,47 @@ def get_exos_interfaces(ip, headers):
         raise
 
 def get_dnos6_interfaces(ip):
+    """
+    Get interface VLAN information from switch running Dell Network OS 6.x
+    
+    Args:
+        ip (str): ip address of switch to connect to
+    Returns:
+        dict of interfaces with mode, tagged vlans and untagged vlan
+    """
     device = {"device_type": "dell_os6",
               "host": ip,
               "username": os.environ.get('dell_uname'),
               "password": os.environ.get('dell_pwd')}
     try:
-        net_connect = ConnectHandler(**device)
-        response = net_connect.send_command('show interfaces status', use_textfsm=True, raise_parsing_error=True)
-        net_connect.disconnect()
+        with ConnectHandler(**device) as connect:
+            response = connect.send_command('show interfaces status', use_textfsm=True, raise_parsing_error=True)
         int_collector = {}
         for interface in response:
             if interface['mode'] == 'A':
                 int_collector[interface['interface']] = {'mode': 'access',
-                                                        'untagged_vlan': int(interface['vlan_id'][0]),
-                                                        'tagged_vlans': []}
+                                                         'untagged_vlan': int(interface['vlan_id'][0]),
+                                                         'tagged_vlans': []}
             if interface['mode'] == 'T' or interface['mode'] == 'G':
+                tagged_vlans = ''.join(interface['vlan_id']).split(',')
                 if interface['mode'] == 'G':
                     logger.warning(f'Interface {interface['interface']} set to General mode')
-                tagged_vlans = ''.join(interface['vlan_id']).split(',')
                 if tagged_vlans[0] == '2-4093':
                     logger.warning(f'Interface {interface['interface']} set to Trunk All mode')
                     int_collector[interface['interface']] = {'mode': 'tagged-all',
-                                                            'untagged_vlan': None,
-                                                            'tagged_vlans': []}
+                                                             'untagged_vlan': None,
+                                                             'tagged_vlans': []}
                 else:
                     for vlan in tagged_vlans:
+                        #Expand VLAN ranges
                         if re.search(r'\d+-\d+', vlan):
-                            vlan_range = [int(i) for i in re.split('-', vlan)]
-                            new_vlans = list(range(vlan_range[0], vlan_range[1]+1))
+                            vlan_split = [int(i) for i in re.split('-', vlan)]
+                            vlan_range = list(range(vlan_split[0], vlan_split[1]+1))
                             tagged_vlans.remove(vlan)
-                            tagged_vlans = sorted([int(i) for i in tagged_vlans + new_vlans])
+                            tagged_vlans = sorted([int(i) for i in tagged_vlans + vlan_range])
                     int_collector[interface['interface']] = {'mode': 'tagged',
-                                                            'untagged_vlan': int(interface['native_vid']),
-                                                            'tagged_vlans': [int(i) for i in tagged_vlans]}
+                                                             'untagged_vlan': int(interface['native_vid']),
+                                                             'tagged_vlans': [int(i) for i in tagged_vlans]}
         return int_collector
     except NetmikoAuthenticationException as err:
         logger.error(f'Connection failed, incorrect credentials')
@@ -227,18 +246,19 @@ def get_dnos6_interfaces(ip):
         logger.error(f'Connection failed, timed out')
         raise
 
-def get_int_updates(netbox_interfaces, exos_interfaces):
-    """Compare interface information from Netbox and switch and return updates
+def get_int_updates(netbox_interfaces, switch_interfaces):
+    """
+    Compare interface information from Netbox and switch and return updates
     needed within Netbox
 
     Args:
         netbox_interfaces (dict): interfaces from netbox with VLAN information
-        exos_interfaces (dict): interfaces from switch with VLAN information
+        switch_interfaces (dict): interfaces from switch with VLAN information
     Returns:
         list of interfaces with VLAN information that needs updating in Netbox
     """
     update_collector = []
-    for interface, info in exos_interfaces.items():
+    for interface, info in switch_interfaces.items():
         try:
             update = {}
             flag_mode = False
@@ -264,7 +284,8 @@ def get_int_updates(netbox_interfaces, exos_interfaces):
     return update_collector
 
 def set_netbox_interface(interface):
-    """Update VLAN information for a single interface in Netbox 
+    """
+    Update VLAN information for a single interface in Netbox 
     
     Args:
         interface (dict): VLAN information for one interface
@@ -284,7 +305,9 @@ def set_netbox_interface(interface):
         logger.error(f'Unable to make change, {err}')
 
 def send_log():
-    """Email log file"""
+    """
+    Email log file
+    """
     try:
         with open(log_file) as file:
             log_msg = EmailMessage()
@@ -321,8 +344,8 @@ try:
     netbox_headers = {'Accept': 'application/json',
                       'Content-Type': 'application/json',
                       'Authorization': f'Token {os.environ.get('netbox_token')}'}
-    switches = get_netbox_devices() # Get list of switches from Netbox
-    netbox_vlan_ids = get_netbox_vlans() # Get list of VLANs with ids
+    switches = get_netbox_devices()
+    netbox_vlan_ids = get_netbox_vlans()
 except Exception as err:
     logger.error(f'Unable to connect to Netbox, {err}', exc_info=True)
     send_log()
@@ -331,17 +354,21 @@ except Exception as err:
 for switch in switches:
     try:
         logger.info(f'Connecting to switch {switch['name']}')
+        # Get switch info from EXOS switches
         if switch['platform_id'] == 1:
-            exos_headers = exos_auth(switch['ip']) # Authenticate to switch
-            exos_interfaces = get_exos_interfaces(switch['ip'], exos_headers) # Get VLAN info from switch
+            exos_headers = exos_auth(switch['ip'])
+            switch_interfaces = get_exos_interfaces(switch['ip'], exos_headers)
+        # Get switch info from DNOS6 switches
         if switch['platform_id'] == 2:
-            exos_interfaces = get_dnos6_interfaces(switch['ip'])            
-        netbox_interfaces = get_netbox_interfaces(switch) # Get VLAN info from Netbox
-        interface_updates = get_int_updates(netbox_interfaces, exos_interfaces) # Compare VLAN info
+            switch_interfaces = get_dnos6_interfaces(switch['ip'])
+        # Get info from Netbox and compare
+        netbox_interfaces = get_netbox_interfaces(switch)
+        interface_updates = get_int_updates(netbox_interfaces, switch_interfaces)
         if interface_updates:
             for interface in interface_updates:
                 port = interface.pop('port')
-                log_msg = (f'Setting interface {port} ') # Generate log message
+                # Generate log message
+                log_msg = (f'Setting interface {port} ')
                 if 'untagged_vlan' in interface:
                     log_msg += (f'- Untagged VLAN to {interface['untagged_vlan']} -')
                 if 'tagged_vlans' in interface:
@@ -349,8 +376,9 @@ for switch in switches:
                 if interface['mode'] == 'tagged-all':
                     log_msg += (f'- Tagged All mode -')
                 logger.info(log_msg)
+                # Update VLAN info in Netbox for each interface if not dry-run
                 if not args.dryrun:
-                    set_netbox_interface(interface) # Update VLAN info in Netbox for each interface
+                    set_netbox_interface(interface)
         else:
             logger.info('No updates found')
     except (NetmikoAuthenticationException, NetmikoTimeoutException) as err:
