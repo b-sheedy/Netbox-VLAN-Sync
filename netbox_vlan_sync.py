@@ -241,13 +241,16 @@ def get_int_updates(netbox_interfaces, exos_interfaces):
     for interface, info in exos_interfaces.items():
         try:
             update = {}
+            flag_mode = False
             flag_tagged = False
             flag_untagged = False
+            if info['mode'] != netbox_interfaces[interface]['mode']:
+                flag_mode = True
             if info['tagged_vlans'] != netbox_interfaces[interface]['tagged_vlans']:
                 flag_tagged = True
             if info['untagged_vlan'] != netbox_interfaces[interface]['untagged_vlan']:
                 flag_untagged = True
-            if flag_tagged == True or flag_untagged == True:
+            if flag_tagged == True or flag_untagged == True or flag_mode ==True:
                 update = {'port': interface,
                           'int_id': netbox_interfaces[interface]['int_id'],
                           'mode': info['mode']}
@@ -343,6 +346,8 @@ for switch in switches:
                     log_msg += (f'- Untagged VLAN to {interface['untagged_vlan']} -')
                 if 'tagged_vlans' in interface:
                     log_msg += (f'- Tagged VLAN to {', '.join(map(str, interface['tagged_vlans'])) or 'None'} -')
+                if interface['mode'] == 'tagged-all':
+                    log_msg += (f'- Tagged All mode -')
                 logger.info(log_msg)
                 if not args.dryrun:
                     set_netbox_interface(interface) # Update VLAN info in Netbox for each interface
