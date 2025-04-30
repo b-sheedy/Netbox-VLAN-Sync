@@ -33,7 +33,7 @@ from email.message import EmailMessage
 
 import requests
 from dotenv import load_dotenv
-from netmiko import ConnectHandler
+from netmiko import ConnectHandler, NetmikoAuthenticationException, NetmikoTimeoutException
 
 def get_netbox(path, params):
     """Perform GET request to Netbox and return api data
@@ -190,35 +190,42 @@ def get_dnos6_interfaces(ip):
               "host": ip,
               "username": os.environ.get('exos_uname'),
               "password": os.environ.get('exos_pwd')}
-    net_connect = ConnectHandler(**device)
-    response = net_connect.send_command('show interfaces status', use_textfsm=True, raise_parsing_error=True)
-    net_connect.disconnect()
-    int_collector = {}
-    for interface in response:
-        if interface['mode'] == 'A':
-            int_collector[interface['interface']] = {'mode': 'access',
-                                                    'untagged_vlan': int(interface['vlan_id'][0]),
-                                                    'tagged_vlans': []}
-        if interface['mode'] == 'T' or interface['mode'] == 'G':
-            if interface['mode'] == 'G':
-                logger.warning(f'Interface {interface['interface']} set to General mode')
-            tagged_vlans = ''.join(interface['vlan_id']).split(',')
-            if tagged_vlans[0] == '2-4093':
-                logger.warning(f'Interface {interface['interface']} set to Trunk All mode')
-                int_collector[interface['interface']] = {'mode': 'tagged-all',
-                                                        'untagged_vlan': None,
+    try:
+        net_connect = ConnectHandler(**device)
+        response = net_connect.send_command('show interfaces status', use_textfsm=True, raise_parsing_error=True)
+        net_connect.disconnect()
+        int_collector = {}
+        for interface in response:
+            if interface['mode'] == 'A':
+                int_collector[interface['interface']] = {'mode': 'access',
+                                                        'untagged_vlan': int(interface['vlan_id'][0]),
                                                         'tagged_vlans': []}
-            else:
-                for vlan in tagged_vlans:
-                    if re.search(r'\d+-\d+', vlan):
-                        vlan_range = [int(i) for i in re.split('-', vlan)]
-                        new_vlans = list(range(vlan_range[0], vlan_range[1]+1))
-                        tagged_vlans.remove(vlan)
-                        tagged_vlans = sorted([int(i) for i in tagged_vlans + new_vlans])
-                int_collector[interface['interface']] = {'mode': 'tagged',
-                                                        'untagged_vlan': int(interface['native_vid']),
-                                                        'tagged_vlans': [int(i) for i in tagged_vlans]}
-    return int_collector
+            if interface['mode'] == 'T' or interface['mode'] == 'G':
+                if interface['mode'] == 'G':
+                    logger.warning(f'Interface {interface['interface']} set to General mode')
+                tagged_vlans = ''.join(interface['vlan_id']).split(',')
+                if tagged_vlans[0] == '2-4093':
+                    logger.warning(f'Interface {interface['interface']} set to Trunk All mode')
+                    int_collector[interface['interface']] = {'mode': 'tagged-all',
+                                                            'untagged_vlan': None,
+                                                            'tagged_vlans': []}
+                else:
+                    for vlan in tagged_vlans:
+                        if re.search(r'\d+-\d+', vlan):
+                            vlan_range = [int(i) for i in re.split('-', vlan)]
+                            new_vlans = list(range(vlan_range[0], vlan_range[1]+1))
+                            tagged_vlans.remove(vlan)
+                            tagged_vlans = sorted([int(i) for i in tagged_vlans + new_vlans])
+                    int_collector[interface['interface']] = {'mode': 'tagged',
+                                                            'untagged_vlan': int(interface['native_vid']),
+                                                            'tagged_vlans': [int(i) for i in tagged_vlans]}
+        return int_collector
+    except NetmikoAuthenticationException as err:
+        logger.error(f'Connection failed, incorrect credentials')
+        raise
+    except NetmikoTimeoutException as err:
+        logger.error(f'Connection failed, timed out')
+        raise
 
 def get_int_updates(netbox_interfaces, exos_interfaces):
     """Compare interface information from Netbox and switch and return updates
@@ -305,6 +312,7 @@ netbox_site = args.site
 logging.basicConfig(level=logging.INFO, filename=log_file, filemode='w', 
                     format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+logging.getLogger("paramiko").setLevel(logging.WARNING)
 
 try:
     netbox_headers = {'Accept': 'application/json',
@@ -340,6 +348,8 @@ for switch in switches:
                     set_netbox_interface(interface) # Update VLAN info in Netbox for each interface
         else:
             logger.info('No updates found')
+    except (NetmikoAuthenticationException, NetmikoTimeoutException) as err:
+        continue
     except Exception as err:
         logger.error(err, exc_info=True)
 
