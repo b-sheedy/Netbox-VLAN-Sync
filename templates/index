@@ -1,0 +1,3 @@
+Template, Hostname, Platform, Command
+
+dell_dnos6_show_int_status.textfsm, .*, dell_os6, sh[[ow]] int[[erfaces]] st[[atus]]

@@ -322,12 +322,14 @@ def send_log():
         logger.error(f'Unable to email log, {err}')
 
 # Main body starts here
-# Load variables from .env file and parse arguments
+# Process environment variables and parse arguments
 load_dotenv()
+local_path = os.path.dirname(__file__)
 netbox_base_url = os.environ.get('netbox_url')
 mail_server = os.environ.get('mail_server')
-log_file = os.path.join(os.path.dirname(__file__), os.environ.get('log_file'))
+log_file = os.path.join(local_path, os.environ.get('log_file'))
 netbox_sites = [site.strip() for site in os.environ.get('netbox_sites').split(',')]
+os.environ['NET_TEXTFSM'] = os.path.join(local_path, 'templates')
 parser = argparse.ArgumentParser()
 parser.add_argument('--dryrun', help='do not write changes to Netbox if included', action='store_true')
 parser.add_argument('--site', help='Netbox site', choices=[*netbox_sites], default=netbox_sites[0])

@@ -1,0 +1,36 @@
+Value INTERFACE (\S+)
+Value DESCRIPTION (\S+(\s+\S+)*)
+Value DUPLEX (N/A|Full|Half)
+Value SPEED (\S+)
+Value NEG (\S+)
+Value STATE (\S+)
+Value FLOWCTRL (N/A|On|Off)
+Value Required MODE (\S+)
+Value NATIVE_VID (\d+)
+Value List VLAN_ID (\S+)
+
+
+Start
+  ^Port\s+Description\s+Duplex\s+Speed\s+Neg\s+Link\s+Flow\s+M\s+VLAN
+  ^\s+State\s+Ctrl -> Interface_Record
+  ^. -> Error
+
+Interface_Record
+  ^\s*---
+  ^\S+ -> Continue.Record
+  ^${INTERFACE}(\s+${DESCRIPTION})?\s+${DUPLEX}\s+${SPEED}\s+${NEG}\s+${STATE}\s+${FLOWCTRL}\s*${MODE}?\s*(\(${NATIVE_VID}\),?)?\s*${VLAN_ID}?\s*$$
+  ^\s{62}${VLAN_ID}
+  ^\s*[Oo]ob\s*
+  ^\s*State\s*
+  ^Port\s+Description\s+Link\s+M\s+VLAN
+  ^Channel\s+State\s* -> Port_Channel_Record
+  ^\s*$$
+  ^. -> Error
+
+Port_Channel_Record
+  ^\s*---
+  ^\S+ -> Continue.Record
+  ^${INTERFACE}(\s+${DESCRIPTION})?\s+${STATE}\s+${MODE}\s+(\(${NATIVE_VID}\),?)?${VLAN_ID}\s*$$
+  ^\s{49}${VLAN_ID}
+  ^\s*$$
+  ^. -> Error
