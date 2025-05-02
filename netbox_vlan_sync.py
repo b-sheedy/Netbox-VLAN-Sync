@@ -225,7 +225,7 @@ def get_dnos6_interfaces(ip):
                 if tagged_vlans[0] == '2-4093':
                     logger.warning(f'Interface {interface['interface']} set to Trunk All mode')
                     int_collector[interface['interface']] = {'mode': 'tagged-all',
-                                                             'untagged_vlan': None,
+                                                             'untagged_vlan': int(interface['native_vid']),
                                                              'tagged_vlans': []}
                 else:
                     for vlan in tagged_vlans:
@@ -272,8 +272,9 @@ def get_int_updates(netbox_interfaces, switch_interfaces):
                 flag_untagged = True
             if flag_tagged == True or flag_untagged == True or flag_mode ==True:
                 update = {'port': interface,
-                          'int_id': netbox_interfaces[interface]['int_id'],
-                          'mode': info['mode']}
+                          'int_id': netbox_interfaces[interface]['int_id']}
+                if flag_mode == True:
+                    update['mode'] = info['mode']
                 if flag_tagged == True:
                     update['tagged_vlans'] = info['tagged_vlans']
                 if flag_untagged == True:
@@ -371,12 +372,12 @@ for switch in switches:
                 port = interface.pop('port')
                 # Generate log message
                 log_msg = (f'Setting interface {port} ')
+                if 'mode' in interface:
+                    log_msg += (f'- {interface['mode'].capitalize()} mode -')
                 if 'untagged_vlan' in interface:
                     log_msg += (f'- Untagged VLAN to {interface['untagged_vlan']} -')
                 if 'tagged_vlans' in interface:
                     log_msg += (f'- Tagged VLAN to {', '.join(map(str, interface['tagged_vlans'])) or 'None'} -')
-                if interface['mode'] == 'tagged-all':
-                    log_msg += (f'- Tagged All mode -')
                 logger.info(log_msg)
                 # Update VLAN info in Netbox for each interface if not dry-run
                 if not args.dryrun:
