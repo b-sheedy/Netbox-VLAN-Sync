@@ -73,7 +73,7 @@ def get_netbox_devices():
     # Filter to compatible platforms at specified site
     params = {'platform_id': [1,2],
               'role': 'switch',
-              'site': netbox_site}
+              'site': netbox_site.lower()}
     api_data = get_netbox(path, params)
     device_collector = []
     for switch in api_data:
@@ -98,7 +98,7 @@ def get_netbox_vlans():
         dict of vlan ids with corresponding netbox ids
     """
     path = '/api/ipam/vlans/'
-    params = {'brief': 1, 'site': [netbox_site, 'null']}
+    params = {'brief': 1, 'site': [netbox_site.lower(), 'null']}
     api_data = get_netbox(path, params)
     vlan_collector = {}
     for vlan in api_data:
@@ -312,14 +312,14 @@ def send_log():
         with open(log_file) as file:
             log_msg = EmailMessage()
             log_msg.set_content(file.read())
-        log_msg['Subject'] = 'VLAN Sync Log'
+        log_msg['Subject'] = f'{netbox_site} VLAN Sync Log'
         log_msg['From'] = os.environ.get('email_from')
         log_msg['To'] = os.environ.get('email_to')
         smtp = smtplib.SMTP(mail_server, timeout=20)
         smtp.send_message(log_msg)
         smtp.quit()
     except Exception as err:
-        logger.error(f'Unable to email log, {err}', exc_info=True)
+        logger.error(f'Unable to email log, {err}')
 
 # Main body starts here
 # Load variables from .env file and parse arguments
@@ -347,7 +347,7 @@ try:
     switches = get_netbox_devices()
     netbox_vlan_ids = get_netbox_vlans()
 except Exception as err:
-    logger.error(f'Unable to connect to Netbox, {err}', exc_info=True)
+    logger.error(f'Unable to connect to Netbox, {err}')
     send_log()
     sys.exit(1)
 
