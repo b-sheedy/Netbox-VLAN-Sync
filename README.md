@@ -44,12 +44,13 @@ deactivate
 netbox_token = API token for Netbox
 netbox_url = Netbox URL
 netbox_sites = Valid site objects in Netbox, first will be default
-mail_server = SMTP server for emailing logs
+exclusions = Regex pattern for any switch ports to exclude (optional)
 exos_uname = Admin username for Extreme switches
 exos_pwd = Admin password for Extreme switches
 dell_uname = Admin username for Dell N-series switches
 dell_pwd = Admin password for Dell N-series switches
 log_file = Desired log file name
+mail_server = SMTP server for emailing logs
 email_from = From email address for log
 email_to = To email address for log
 ```

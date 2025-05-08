@@ -8,12 +8,13 @@ assumed to be running Extreme Networks Switch Engine or Dell Network OS
 netbox_token = API token for Netbox
 netbox_url = Netbox URL
 netbox_sites = Valid site objects in Netbox, first will be default
-mail_server = SMTP server
+exclusions = Regex pattern for any switch ports to exclude (optional)
 exos_uname = Admin username for Extreme switches
 exos_pwd = Admin password for Extreme switches
 dell_uname = Admin username for Dell switches
 dell_pwd = Admin password for Dell switches
 log_file = Desired log file name
+mail_server = SMTP server
 email_from = From email address for log
 email_to = To email address for log
 
@@ -260,6 +261,8 @@ def get_int_updates(netbox_interfaces, switch_interfaces):
     update_collector = []
     for interface, info in switch_interfaces.items():
         try:
+            if exclusions and re.search(exclusions, interface):
+                continue
             update = {}
             flag_mode = False
             flag_tagged = False
@@ -330,6 +333,7 @@ netbox_base_url = os.environ.get('netbox_url')
 mail_server = os.environ.get('mail_server')
 log_file = os.path.join(local_path, os.environ.get('log_file'))
 netbox_sites = [site.strip() for site in os.environ.get('netbox_sites').split(',')]
+exclusions = os.environ.get('exclusions')
 os.environ['NET_TEXTFSM'] = os.path.join(local_path, 'templates')
 parser = argparse.ArgumentParser()
 parser.add_argument('--dryrun', help='do not write changes to Netbox if included', action='store_true')
