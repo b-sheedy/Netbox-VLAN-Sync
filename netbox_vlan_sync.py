@@ -183,7 +183,7 @@ def get_exos_interfaces(ip, headers):
             if interface['state']['oper-status'] != 'NOT_PRESENT':
                 int_state = interface['openconfig-if-ethernet:ethernet']['openconfig-vlan:switched-vlan']['state']
                 int_collector[interface['name']] = {'mode': int_state['interface-mode'].lower(),
-                                              'tagged_vlans': sorted(int_state.get('trunk-vlans', []))}
+                                                    'tagged_vlans': sorted(int_state.get('trunk-vlans', []))}
                 if int_collector[interface['name']]['mode'] == 'trunk':
                     int_collector[interface['name']]['mode'] = 'tagged'
                     int_collector[interface['name']]['untagged_vlan'] = int_state.get('native-vlan', None)
@@ -377,7 +377,7 @@ for switch in switches:
                 # Generate log message
                 log_msg = (f'Setting interface {port} ')
                 if 'mode' in interface:
-                    log_msg += (f'- {interface['mode'].capitalize()} mode -')
+                    log_msg += (f'- {(interface['mode'] or 'Unconfigured').capitalize()} mode -')
                 if 'untagged_vlan' in interface:
                     log_msg += (f'- Untagged VLAN to {interface['untagged_vlan']} -')
                 if 'tagged_vlans' in interface:
