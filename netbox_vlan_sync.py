@@ -229,13 +229,16 @@ def get_dnos6_interfaces(ip):
                                                              'untagged_vlan': int(interface['native_vid']),
                                                              'tagged_vlans': []}
                 else:
+                    vlan_collector = []
                     for vlan in tagged_vlans:
                         #Expand VLAN ranges
                         if re.search(r'\d+-\d+', vlan):
                             vlan_split = [int(i) for i in re.split('-', vlan)]
                             vlan_range = list(range(vlan_split[0], vlan_split[1]+1))
-                            tagged_vlans.remove(vlan)
-                            tagged_vlans = sorted([int(i) for i in tagged_vlans + vlan_range])
+                            vlan_collector = vlan_collector + vlan_range
+                        else:
+                            vlan_collector.append(vlan)
+                        tagged_vlans = sorted([int(i) for i in vlan_collector])
                     int_collector[interface['interface']] = {'mode': 'tagged',
                                                              'untagged_vlan': int(interface['native_vid']),
                                                              'tagged_vlans': [int(i) for i in tagged_vlans]}
